@@ -1,0 +1,25 @@
+[Unit]
+Description=Orchestrator (segundo cérebro de contexto para agentes CLI)
+Documentation=file:///usr/share/doc/orchestrator/ARCHITECTURE.md
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/orchestrator-service
+Restart=on-failure
+RestartSec=2
+Environment=RUST_LOG=info
+
+# Hardening (menor privilégio — ver docs/SECURITY.md)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/orchestrator %h/.cache/orchestrator
+PrivateTmp=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=default.target

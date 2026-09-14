@@ -1,0 +1,32 @@
+[package]
+name = "orchestrator-mcp-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "orchestrator-mcp"
+path = "src/main.rs"
+
+[[bin]]
+name = "orchestrator-hook"
+path = "src/hook.rs"
+
+[lib]
+name = "orchestrator_mcp_server"
+path = "src/lib.rs"
+
+[dependencies]
+orchestrator-core = { path = "../core" }
+orchestrator-memory = { path = "../memory" }
+orchestrator-sandbox = { path = "../sandbox" }
+orchestrator-notify = { path = "../notify" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

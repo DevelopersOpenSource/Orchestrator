@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+.t-escuro{--bg:#111113;--s1:#18181b;--s2:#1f1f23;--s3:#27272c;--bd:#2a2a30;--bd2:#3a3a42;
+ --tx:#e7e7ea;--tx2:#a1a1aa;--tx3:#71717a;--ac:#6aa9d8;--ac-bg:#1b2a36;--ac-tx:#0d1a24;
+ --ok:#4fb67a;--ok-bg:#16271d;--av:#d9a441;--av-bg:#2e2413;--er:#e5534b;--er-bg:#31181a;
+ --k-sec:#e5534b;--k-arq:#6b95e8;--k-pra:#3fb0bf;--k-sin:#5fb97a;--k-dec:#b387d9;
+ --term:#0e0e10;--scrim:rgba(0,0,0,.55);--sombra:0 12px 32px rgba(0,0,0,.45)}
+.t-claro{--bg:#f6f6f7;--s1:#ffffff;--s2:#f1f1f3;--s3:#e9e9ec;--bd:#e4e4e7;--bd2:#d4d4d8;
+ --tx:#18181b;--tx2:#52525b;--tx3:#71717a;--ac:#2d73a6;--ac-bg:#e6f0f7;--ac-tx:#ffffff;
+ --ok:#1f8a4c;--ok-bg:#e5f4eb;--av:#a86b0c;--av-bg:#fbf0dc;--er:#c93a32;--er-bg:#fbe9e7;
+ --k-sec:#c93a32;--k-arq:#3a68c9;--k-pra:#1b8796;--k-sin:#2e8a4e;--k-dec:#8a55b8;
+ --term:#fbfbfc;--scrim:rgba(24,24,27,.35);--sombra:0 12px 32px rgba(24,24,27,.16)}
+
+*{box-sizing:border-box}
+html,body{overflow:hidden}
+body{margin:0;font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:var(--ac,#2d73a6);text-decoration:none} a:hover{color:var(--tx,#18181b);text-decoration:underline}
+.mono{font-family:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace}
+.kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;padding:1px 5px;border:1px solid var(--bd2);border-bottom-width:2px;border-radius:4px;color:var(--tx2);background:var(--s1);white-space:nowrap}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:6px;border:1px solid var(--bd2);background:var(--s1);color:var(--tx);font:500 13px/1 "IBM Plex Sans",system-ui,sans-serif;white-space:nowrap}
+.btn-p{background:var(--ac);border-color:var(--ac);color:var(--ac-tx)}
+.ico{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.sep{width:1px;align-self:stretch;background:var(--bd)}
+.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+</style>
+</helmet>
+<div class="{{temaClasse}}" style="width:1440px;height:900px;overflow:hidden;position:absolute;left:0;top:0;background:var(--bg);color:var(--tx)">
+<div style="display:flex;flex-direction:column;height:100%">
+<header style="height:44px;display:flex;align-items:center;gap:12px;padding:0 12px 0 14px;border-bottom:1px solid var(--bd);background:var(--s1)">
+  <div style="display:flex;align-items:center;gap:8px;width:190px"><svg viewBox="0 0 20 20" style="width:20px;height:20px;flex:none"><rect x="1" y="1" width="18" height="18" rx="5" fill="var(--tx)"/><circle cx="10" cy="10" r="4.2" fill="none" stroke="var(--bg)" stroke-width="2"/><circle cx="15.2" cy="4.8" r="1.8" fill="var(--ac)"/></svg><span style="font-weight:600;font-size:13.5px;letter-spacing:-.01em">Orchestrator</span></div>
+  <div style="display:flex;align-items:center;gap:6px;color:var(--tx2);font-size:13px;min-width:0">
+    <span style="color:var(--tx);font-weight:500">loja</span>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex;align-items:center;gap:8px;width:380px;height:30px;padding:0 8px 0 10px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);color:var(--tx3)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><circle cx="7" cy="7" r="4"/><path d="m10 10 3 3"/></svg><span style="flex:1">Buscar ou rodar comando…</span><span class="kbd">Ctrl K</span>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span class="btn" style="border-color:var(--av);color:var(--av);background:var(--av-bg)"><svg class="ico" viewBox="0 0 16 16" style=""><path d="M8 2.5 3.5 4v4c0 2.6 1.9 4.6 4.5 5.5 2.6-.9 4.5-2.9 4.5-5.5V4z"/><path d="M6.2 8 7.5 9.3 10 6.8"/></svg>2 decisões<span class="kbd" style="background:transparent">F2</span></span>
+    <span class="btn"><svg class="ico" viewBox="0 0 16 16" style=""><circle cx="8" cy="8" r="1.6"/><circle cx="3.5" cy="4" r="1.2"/><circle cx="12.5" cy="4" r="1.2"/><circle cx="4" cy="12.5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><path d="m4.5 4.8 2.2 2M11.5 4.8 9.3 6.8M4.9 11.6l1.9-2.4M11.1 11.2 9.3 9.2"/></svg>Memória<span class="kbd">Ctrl ⇧ W</span></span>
+    <span class="btn" style="width:30px;padding:0;justify-content:center;color:var(--tx2)"><svg class="ico" viewBox="0 0 16 16" style=""><circle cx="8" cy="8" r="2"/><path d="M8 2v1.6M8 12.4V14M2 8h1.6M12.4 8H14M3.8 3.8l1.1 1.1M11.1 11.1l1.1 1.1M3.8 12.2l1.1-1.1M11.1 4.9l1.1-1.1"/></svg></span>
+  </div>
+</header>
+<div style="flex:1;min-height:0;display:flex"><aside style="width:216px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--bd);background:var(--s1)">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 10px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)"><span>Projetos</span><svg class="ico" viewBox="0 0 16 16" style="width:14px;height:14px"><path d="M8 3.5v9M3.5 8h9"/></svg></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;background:var(--s3);color:var(--tx)">
+    <svg class="ico" viewBox="0 0 16 16" style="color:var(--tx)"><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/></svg><span class="trunc" style="flex:1;font-weight:500">loja</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/></svg><span class="trunc" style="flex:1;">Orchestrator</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/></svg><span class="trunc" style="flex:1;">site-institucional</span></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 10px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)"><span>Workspaces</span><span style="text-transform:none;letter-spacing:0;font-weight:400" class="kbd">Alt ↑↓</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;background:var(--s3);color:var(--tx)">
+    <span class="trunc" style="flex:1;font-weight:500"><span class="mono" style="color:var(--tx3);margin-right:6px">1</span>principal</span><span style="font-size:11.5px;color:var(--tx3)" class="mono">3</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <span class="trunc" style="flex:1;"><span class="mono" style="color:var(--tx3);margin-right:6px">2</span>migrações</span><span style="font-size:11.5px;color:var(--tx3)" class="mono">1</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <span class="trunc" style="flex:1;"><span class="mono" style="color:var(--tx3);margin-right:6px">3</span>vazia</span></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 10px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)"><span>Nesta workspace</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 6.5 7 8.5 5 10.5M8.5 10.5h2.5"/></svg><span class="trunc" style="flex:1;">frontend</span><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ac);font-size:12px;white-space:nowrap"><span style="font-size:10px">⚙</span></span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 6.5 7 8.5 5 10.5M8.5 10.5h2.5"/></svg><span class="trunc" style="flex:1;">backend</span><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok);font-size:12px;white-space:nowrap"><span style="font-size:10px">●</span></span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><rect x="3" y="5" width="10" height="7.5" rx="2"/><path d="M8 5V3M6 8.5v.5M10 8.5v.5"/></svg><span class="trunc" style="flex:1;">Agente #1</span><span class="mono" style="font-size:11px;color:var(--tx3)">3/10</span></div>
+  <div style="flex:1"></div>
+  <div style="margin:10px;padding:10px;border:1px solid var(--bd);border-radius:8px;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-weight:500">Abrir CLI</span><span class="kbd">Ctrl T</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      <span class="mono" style="font-size:11.5px;padding:2px 7px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">claude</span><span class="mono" style="font-size:11.5px;padding:2px 7px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">codex</span><span class="mono" style="font-size:11.5px;padding:2px 7px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">gemini</span><span class="mono" style="font-size:11.5px;padding:2px 7px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">kimi</span>
+    </div>
+  </div>
+</aside>
+<main style="flex:1;min-width:0;display:flex;flex-direction:column;padding:0 28px">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;padding:22px 0 4px">
+    <div><div style="font-size:18px;font-weight:600;letter-spacing:-.01em">Decisões e atividade</div><div style="color:var(--tx2);margin-top:2px">O que as CLIs pediram ou tentaram fazer no projeto loja.</div></div>
+    <span style="display:inline-flex;gap:8px;align-items:center;color:var(--tx3);font-size:12px"><span class="kbd">a</span> aprova <span class="kbd">d</span> nega <span class="kbd">Esc</span> volta</span>
+  </div>
+  <div style="display:flex;border-bottom:1px solid var(--bd);margin-top:10px"><span style="display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 2px;margin-right:22px;border-bottom:2px solid var(--tx);color:var(--tx);font-weight:600">Pendentes<span class="mono" style="font-size:11px;padding:0 5px;border-radius:4px;background:var(--s3);color:var(--tx2)">2</span></span><span style="display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 2px;margin-right:22px;border-bottom:2px solid transparent;color:var(--tx2);font-weight:400">Auditoria<span class="mono" style="font-size:11px;padding:0 5px;border-radius:4px;background:var(--s3);color:var(--tx2)">41</span></span><span style="display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 2px;margin-right:22px;border-bottom:2px solid transparent;color:var(--tx2);font-weight:400">Ferramentas<span class="mono" style="font-size:11px;padding:0 5px;border-radius:4px;background:var(--s3);color:var(--tx2)">12</span></span></div>
+  <div style="display:flex;gap:20px;padding:16px 0;height:392px;flex:none">
+    <div style="width:400px;flex:none;display:flex;flex-direction:column;gap:6px">
+      <div style="padding:12px 14px;border-radius:8px;border:1px solid var(--bd2);background:var(--s1);display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600">backend</span><span style="color:var(--tx3);font-size:12px">pede confirmação</span><div style="flex:1"></div><span class="mono" style="font-size:11px;color:var(--tx3)">12:05:41</span></div>
+    <div class="mono trunc" style="font-size:12.5px">git push --force origin main</div>
+    <div style="font-size:12px;color:var(--tx3)">regra: push forçado só com o dono</div>
+  </div>
+      <div style="padding:12px 14px;border-radius:8px;border:1px solid transparent;background:transparent;display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:600">Agente #1</span><span style="color:var(--tx3);font-size:12px">pede confirmação</span><div style="flex:1"></div><span class="mono" style="font-size:11px;color:var(--tx3)">12:03:18</span></div>
+    <div class="mono trunc" style="font-size:12.5px">npm publish --access public</div>
+    <div style="font-size:12px;color:var(--tx3)">regra: publicar pacote só com o dono</div>
+  </div>
+    </div>
+    <div style="flex:1;min-width:0;border:1px solid var(--bd);border-radius:10px;background:var(--s1);padding:20px 22px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:5px;background:var(--av-bg);color:var(--av);font-size:12px;font-weight:500;white-space:nowrap"><span style="font-size:9px">○</span>aguardando você</span><span style="color:var(--tx3);font-size:12px">há 38 s</span></div>
+      <div style="font-size:15px;font-weight:600">backend quer rodar um comando que pede sua confirmação</div>
+      <div class="mono" style="padding:12px 14px;border-radius:6px;background:var(--s2);border:1px solid var(--bd);font-size:13px">git push --force origin main</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 20px">
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-size:11.5px;color:var(--tx3)">regra</span><span class="trunc" style="color:var(--tx)">push forçado só com o dono</span></div>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-size:11.5px;color:var(--tx3)">tipo</span><span class="trunc" style="color:var(--tx)">segurança · prioridade 10</span></div>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-size:11.5px;color:var(--tx3)">gatilho</span><span class="trunc" style="color:var(--tx)"><span class="mono" style="font-size:12px">ask-regex: git push (-f|--force)</span></span></div>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-size:11.5px;color:var(--tx3)">CLI</span><span class="trunc" style="color:var(--tx)">backend · codex · workspace 1</span></div>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-size:11.5px;color:var(--tx3)">sessão</span><span class="trunc" style="color:var(--tx)"><span class="mono" style="font-size:12px">a41c07e2-5b19-4d8e</span></span></div>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-size:11.5px;color:var(--tx3)">pasta</span><span class="trunc" style="color:var(--tx)"><span class="mono" style="font-size:12px">~/projetos/loja</span></span></div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding-top:14px;border-top:1px solid var(--bd)">
+        <span style="color:var(--tx3);font-size:12px">A CLI fica parada até você decidir.</span><div style="flex:1"></div>
+        <span class="btn"><svg class="ico" viewBox="0 0 16 16" style=""><path d="m4.5 4.5 7 7M11.5 4.5l-7 7"/></svg>Negar<span class="kbd">d</span></span>
+        <span class="btn btn-p"><svg class="ico" viewBox="0 0 16 16" style=""><path d="m3.5 8.5 3 3 6-7"/></svg>Aprovar<span class="kbd" style="background:transparent;color:inherit;border-color:rgba(255,255,255,.35)">a</span></span>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0 10px"><span style="font-weight:600">Atividade recente</span><span style="color:var(--tx3);font-size:12px">log de auditoria, só acrescenta</span></div>
+  <div style="border:1px solid var(--bd);border-radius:10px;background:var(--s1);overflow:hidden">
+    <div style="display:grid;grid-template-columns:84px 118px 110px minmax(0,1.3fr) minmax(0,1fr);gap:12px;height:34px;align-items:center;padding:0 16px;font-size:11.5px;color:var(--tx3);background:var(--s2)"><span>hora</span><span>decisão</span><span>quem</span><span>ação</span><span>motivo</span></div>
+    <div style="display:grid;grid-template-columns:84px 118px 110px minmax(0,1.3fr) minmax(0,1fr);align-items:center;gap:12px;height:40px;padding:0 16px;border-top:1px solid var(--bd)">
+      <span class="mono" style="font-size:11.5px;color:var(--tx3)">12:05:41</span><span><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:5px;background:var(--av-bg);color:var(--av);font-size:12px;font-weight:500;white-space:nowrap"><span style="font-size:9px">○</span>pendente</span></span><span class="trunc" style="color:var(--tx2)">backend</span>
+      <span class="mono trunc" style="font-size:12px">git push --force origin main</span><span class="trunc" style="color:var(--tx2)">ask-regex · push forçado só com o dono</span>
+    </div><div style="display:grid;grid-template-columns:84px 118px 110px minmax(0,1.3fr) minmax(0,1fr);align-items:center;gap:12px;height:40px;padding:0 16px;border-top:1px solid var(--bd)">
+      <span class="mono" style="font-size:11.5px;color:var(--tx3)">12:04:10</span><span><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:5px;background:var(--er-bg);color:var(--er);font-size:12px;font-weight:500;white-space:nowrap"><span style="font-size:9px">✖</span>bloqueado</span></span><span class="trunc" style="color:var(--tx2)">frontend</span>
+      <span class="mono trunc" style="font-size:12px">rm -rf dist node_modules</span><span class="trunc" style="color:var(--tx2)">deny-regex · nunca apagar em massa</span>
+    </div><div style="display:grid;grid-template-columns:84px 118px 110px minmax(0,1.3fr) minmax(0,1fr);align-items:center;gap:12px;height:40px;padding:0 16px;border-top:1px solid var(--bd)">
+      <span class="mono" style="font-size:11.5px;color:var(--tx3)">12:02:05</span><span><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:5px;background:var(--ok-bg);color:var(--ok);font-size:12px;font-weight:500;white-space:nowrap"><span style="font-size:9px">●</span>permitido</span></span><span class="trunc" style="color:var(--tx2)">Agente #1</span>
+      <span class="mono trunc" style="font-size:12px">retrieve_memory · loja · “acessibilidade”</span><span class="trunc" style="color:var(--tx2)">consulta registrada, sessão liberada</span>
+    </div><div style="display:grid;grid-template-columns:84px 118px 110px minmax(0,1.3fr) minmax(0,1fr);align-items:center;gap:12px;height:40px;padding:0 16px;border-top:1px solid var(--bd)">
+      <span class="mono" style="font-size:11.5px;color:var(--tx3)">12:02:03</span><span><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:5px;background:var(--er-bg);color:var(--er);font-size:12px;font-weight:500;white-space:nowrap"><span style="font-size:9px">✖</span>bloqueado</span></span><span class="trunc" style="color:var(--tx2)">Agente #1</span>
+      <span class="mono trunc" style="font-size:12px">Bash · npm install</span><span class="trunc" style="color:var(--tx2)">sessão ainda não consultou a memória</span>
+    </div><div style="display:grid;grid-template-columns:84px 118px 110px minmax(0,1.3fr) minmax(0,1fr);align-items:center;gap:12px;height:40px;padding:0 16px;border-top:1px solid var(--bd)">
+      <span class="mono" style="font-size:11.5px;color:var(--tx3)">11:58:30</span><span><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:5px;background:var(--ok-bg);color:var(--ok);font-size:12px;font-weight:500;white-space:nowrap"><span style="font-size:9px">●</span>aprovado</span></span><span class="trunc" style="color:var(--tx2)">backend</span>
+      <span class="mono trunc" style="font-size:12px">sqlx migrate run</span><span class="trunc" style="color:var(--tx2)">aprovado pelo dono</span>
+    </div><div style="display:grid;grid-template-columns:84px 118px 110px minmax(0,1.3fr) minmax(0,1fr);align-items:center;gap:12px;height:40px;padding:0 16px;border-top:1px solid var(--bd)">
+      <span class="mono" style="font-size:11.5px;color:var(--tx3)">11:52:12</span><span><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:5px;background:var(--er-bg);color:var(--er);font-size:12px;font-weight:500;white-space:nowrap"><span style="font-size:9px">✖</span>negado</span></span><span class="trunc" style="color:var(--tx2)">backend</span>
+      <span class="mono trunc" style="font-size:12px">git reset --hard HEAD~3</span><span class="trunc" style="color:var(--tx2)">negado pelo dono</span>
+    </div>
+  </div>
+</main></div>
+<footer style="height:28px;display:flex;align-items:center;gap:10px;padding:0 12px;border-top:1px solid var(--bd);background:var(--s1);font-size:12px;color:var(--tx3)">
+  <span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok);font-size:12px;white-space:nowrap"><span style="font-size:10px">●</span>memória pronta</span><span>semântica + reranker</span><span style="color:var(--bd2)">·</span><span>chroma conectado</span><span style="color:var(--bd2)">·</span><span class="mono" style="font-size:11.5px">API 127.0.0.1:10000</span>
+  <div style="flex:1"></div>
+  <span>postura: <span style="color:var(--tx2)">autônomo</span></span><span style="color:var(--bd2)">·</span><span class="mono" style="font-size:11.5px">⟳ 18,4k → 3,2k tok · US$ 0,19</span><span style="color:var(--bd2)">·</span><span>manual <span class="kbd">F1</span></span>
+</footer>
+</div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900},"tema":{"editor":"enum","options":["escuro","claro"],"default":"claro"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tema = this.props.tema ?? 'claro';
+    return { temaClasse: tema === 'claro' ? 't-claro' : 't-escuro' };
+  }
+}
+</script>
+</body>
+</html>

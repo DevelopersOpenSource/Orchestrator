@@ -1,0 +1,53 @@
+# Sandbox de teste do Orchestrator.
+#
+# Traz o mínimo para EXECUTAR o que as CLIs produzem (python3, node, curl),
+# não só para abrir páginas: sem isso o orquestrador consegue ver o frontend
+# mas não consegue subir o backend que o serve.
+#
+# Um ambiente descartável onde o orquestrador pode ABRIR páginas e RODAR
+# binários (AppImage inclusive) para verificar o que as CLIs produziram, sem
+# encostar na máquina nem na tela do usuário: tudo acontece num display
+# virtual (Xvfb) dentro do container.
+#
+# Build: podman build -t orchestrator-sandbox -f packaging/sandbox/Containerfile
+FROM docker.io/library/debian:stable-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:99 \
+    SCREEN=1280x800x24
+
+# `fonts-noto-color-emoji` (~11 MB) entra porque o orquestrador CONFERE pela
+# tela: sem ele um "✅" da interface aparece como quadrado no screenshot, e
+# ele não tem como distinguir "dado corrompido" de "fonte ausente" sem gastar
+# passos investigando.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        chromium \
+        xvfb \
+        socat \
+        x11-utils \
+        xdotool \
+        scrot \
+        fonts-dejavu-core \
+        fonts-noto-color-emoji \
+        libfuse2 \
+        ca-certificates \
+        procps \
+        python3 \
+        nodejs \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Usuário sem privilégio: nada aqui precisa de root. O diretório de sockets
+# do X precisa existir antes (o Xvfb não consegue criá-lo sem ser root).
+RUN useradd -m -u 1000 orch \
+    && mkdir -p /work /shots /tmp/.X11-unix \
+    && chmod 1777 /tmp/.X11-unix \
+    && chown -R orch /work /shots
+USER orch
+WORKDIR /work
+
+COPY --chown=orch packaging/sandbox/entrypoint.sh /usr/local/bin/entrypoint.sh
+
+# 9222 = DevTools Protocol (como o orquestrador dirige o navegador).
+EXPOSE 9222
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

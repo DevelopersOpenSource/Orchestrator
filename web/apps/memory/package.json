@@ -1,0 +1,22 @@
+{
+  "name": "@orchestrator/memory-page",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A página da memória servida pelo memoryd em 127.0.0.1:10000.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@orchestrator/globe": "*",
+    "@orchestrator/tokens": "*"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  }
+}

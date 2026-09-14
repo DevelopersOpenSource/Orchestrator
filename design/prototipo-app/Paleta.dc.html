@@ -1,0 +1,260 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+.t-escuro{--bg:#111113;--s1:#18181b;--s2:#1f1f23;--s3:#27272c;--bd:#2a2a30;--bd2:#3a3a42;
+ --tx:#e7e7ea;--tx2:#a1a1aa;--tx3:#71717a;--ac:#6aa9d8;--ac-bg:#1b2a36;--ac-tx:#0d1a24;
+ --ok:#4fb67a;--ok-bg:#16271d;--av:#d9a441;--av-bg:#2e2413;--er:#e5534b;--er-bg:#31181a;
+ --k-sec:#e5534b;--k-arq:#6b95e8;--k-pra:#3fb0bf;--k-sin:#5fb97a;--k-dec:#b387d9;
+ --term:#0e0e10;--scrim:rgba(0,0,0,.55);--sombra:0 12px 32px rgba(0,0,0,.45)}
+.t-claro{--bg:#f6f6f7;--s1:#ffffff;--s2:#f1f1f3;--s3:#e9e9ec;--bd:#e4e4e7;--bd2:#d4d4d8;
+ --tx:#18181b;--tx2:#52525b;--tx3:#71717a;--ac:#2d73a6;--ac-bg:#e6f0f7;--ac-tx:#ffffff;
+ --ok:#1f8a4c;--ok-bg:#e5f4eb;--av:#a86b0c;--av-bg:#fbf0dc;--er:#c93a32;--er-bg:#fbe9e7;
+ --k-sec:#c93a32;--k-arq:#3a68c9;--k-pra:#1b8796;--k-sin:#2e8a4e;--k-dec:#8a55b8;
+ --term:#fbfbfc;--scrim:rgba(24,24,27,.35);--sombra:0 12px 32px rgba(24,24,27,.16)}
+
+*{box-sizing:border-box}
+html,body{overflow:hidden}
+body{margin:0;font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:var(--ac,#2d73a6);text-decoration:none} a:hover{color:var(--tx,#18181b);text-decoration:underline}
+.mono{font-family:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace}
+.kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;padding:1px 5px;border:1px solid var(--bd2);border-bottom-width:2px;border-radius:4px;color:var(--tx2);background:var(--s1);white-space:nowrap}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:6px;border:1px solid var(--bd2);background:var(--s1);color:var(--tx);font:500 13px/1 "IBM Plex Sans",system-ui,sans-serif;white-space:nowrap}
+.btn-p{background:var(--ac);border-color:var(--ac);color:var(--ac-tx)}
+.ico{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.sep{width:1px;align-self:stretch;background:var(--bd)}
+.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+</style>
+</helmet>
+<div class="{{temaClasse}}" style="width:1440px;height:900px;overflow:hidden;position:absolute;left:0;top:0;background:var(--bg);color:var(--tx)">
+<div style="display:flex;flex-direction:column;height:100%">
+<header style="height:44px;display:flex;align-items:center;gap:12px;padding:0 12px 0 14px;border-bottom:1px solid var(--bd);background:var(--s1)">
+  <div style="display:flex;align-items:center;gap:8px;width:190px"><svg viewBox="0 0 20 20" style="width:20px;height:20px;flex:none"><rect x="1" y="1" width="18" height="18" rx="5" fill="var(--tx)"/><circle cx="10" cy="10" r="4.2" fill="none" stroke="var(--bg)" stroke-width="2"/><circle cx="15.2" cy="4.8" r="1.8" fill="var(--ac)"/></svg><span style="font-weight:600;font-size:13.5px;letter-spacing:-.01em">Orchestrator</span></div>
+  <div style="display:flex;align-items:center;gap:6px;color:var(--tx2);font-size:13px;min-width:0">
+    <span style="color:var(--tx);font-weight:500">loja</span>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex;align-items:center;gap:8px;width:380px;height:30px;padding:0 8px 0 10px;border:1px solid var(--bd2);border-radius:6px;background:var(--bg);color:var(--tx3)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><circle cx="7" cy="7" r="4"/><path d="m10 10 3 3"/></svg><span style="flex:1">Buscar ou rodar comando…</span><span class="kbd">Ctrl K</span>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span class="btn" style="border-color:var(--bd2);color:var(--tx2);background:var(--s1)"><svg class="ico" viewBox="0 0 16 16" style=""><path d="M8 2.5 3.5 4v4c0 2.6 1.9 4.6 4.5 5.5 2.6-.9 4.5-2.9 4.5-5.5V4z"/><path d="M6.2 8 7.5 9.3 10 6.8"/></svg>Decisões<span class="kbd" style="background:transparent">F2</span></span>
+    <span class="btn"><svg class="ico" viewBox="0 0 16 16" style=""><circle cx="8" cy="8" r="1.6"/><circle cx="3.5" cy="4" r="1.2"/><circle cx="12.5" cy="4" r="1.2"/><circle cx="4" cy="12.5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><path d="m4.5 4.8 2.2 2M11.5 4.8 9.3 6.8M4.9 11.6l1.9-2.4M11.1 11.2 9.3 9.2"/></svg>Memória<span class="kbd">Ctrl ⇧ W</span></span>
+    <span class="btn" style="width:30px;padding:0;justify-content:center;color:var(--tx2)"><svg class="ico" viewBox="0 0 16 16" style=""><circle cx="8" cy="8" r="2"/><path d="M8 2v1.6M8 12.4V14M2 8h1.6M12.4 8H14M3.8 3.8l1.1 1.1M11.1 11.1l1.1 1.1M3.8 12.2l1.1-1.1M11.1 4.9l1.1-1.1"/></svg></span>
+  </div>
+</header>
+<div style="flex:1;min-height:0;display:flex"><aside style="width:216px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--bd);background:var(--s1)">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 10px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)"><span>Projetos</span><svg class="ico" viewBox="0 0 16 16" style="width:14px;height:14px"><path d="M8 3.5v9M3.5 8h9"/></svg></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;background:var(--s3);color:var(--tx)">
+    <svg class="ico" viewBox="0 0 16 16" style="color:var(--tx)"><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/></svg><span class="trunc" style="flex:1;font-weight:500">loja</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/></svg><span class="trunc" style="flex:1;">Orchestrator</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/></svg><span class="trunc" style="flex:1;">site-institucional</span></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 10px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)"><span>Workspaces</span><span style="text-transform:none;letter-spacing:0;font-weight:400" class="kbd">Alt ↑↓</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;background:var(--s3);color:var(--tx)">
+    <span class="trunc" style="flex:1;font-weight:500"><span class="mono" style="color:var(--tx3);margin-right:6px">1</span>principal</span><span style="font-size:11.5px;color:var(--tx3)" class="mono">3</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <span class="trunc" style="flex:1;"><span class="mono" style="color:var(--tx3);margin-right:6px">2</span>migrações</span><span style="font-size:11.5px;color:var(--tx3)" class="mono">1</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <span class="trunc" style="flex:1;"><span class="mono" style="color:var(--tx3);margin-right:6px">3</span>vazia</span></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 10px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)"><span>Nesta workspace</span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 6.5 7 8.5 5 10.5M8.5 10.5h2.5"/></svg><span class="trunc" style="flex:1;">frontend</span><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ac);font-size:12px;white-space:nowrap"><span style="font-size:10px">⚙</span></span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 6.5 7 8.5 5 10.5M8.5 10.5h2.5"/></svg><span class="trunc" style="flex:1;">backend</span><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok);font-size:12px;white-space:nowrap"><span style="font-size:10px">●</span></span></div>
+  <div style="display:flex;align-items:center;gap:8px;height:30px;margin:0 6px;padding:0 8px;border-radius:6px;color:var(--tx2)">
+    <svg class="ico" viewBox="0 0 16 16" style=""><rect x="3" y="5" width="10" height="7.5" rx="2"/><path d="M8 5V3M6 8.5v.5M10 8.5v.5"/></svg><span class="trunc" style="flex:1;">Agente #1</span><span class="mono" style="font-size:11px;color:var(--tx3)">3/10</span></div>
+  <div style="flex:1"></div>
+  <div style="margin:10px;padding:10px;border:1px solid var(--bd);border-radius:8px;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-weight:500">Abrir CLI</span><span class="kbd">Ctrl T</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      <span class="mono" style="font-size:11.5px;padding:2px 7px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">claude</span><span class="mono" style="font-size:11.5px;padding:2px 7px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">codex</span><span class="mono" style="font-size:11.5px;padding:2px 7px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">gemini</span><span class="mono" style="font-size:11.5px;padding:2px 7px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">kimi</span>
+    </div>
+  </div>
+</aside><section style="width:392px;flex:none;display:flex;flex-direction:column;background:var(--bg);border-right:1px solid var(--bd)">
+  <div style="height:40px;display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border-bottom:1px solid var(--bd)">
+    <span style="font-weight:600">Chat</span>
+    <span class="mono" style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:2px 6px 2px 8px;border:1px solid var(--bd2);border-radius:5px;color:var(--tx2)">claude · opus <svg class="ico" viewBox="0 0 16 16" style="width:12px;height:12px"><path d="m4 6 4 4 4-4"/></svg></span>
+    <div style="flex:1"></div>
+    <span style="color:var(--tx3);display:flex"><svg class="ico" viewBox="0 0 16 16" style=""><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M6.5 3v10"/></svg></span>
+  </div>
+  <div style="flex:1;overflow:hidden;padding:16px 16px 8px;display:flex;flex-direction:column;gap:18px">
+    <div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px"><span style="font-weight:600;font-size:12.5px;color:var(--tx)">você</span><span class="mono" style="font-size:11px;color:var(--tx3)">12:02</span></div><div>abra uma CLI chamada frontend e mande criar a página de checkout</div></div>
+    <div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px"><span style="font-weight:600;font-size:12.5px;color:var(--ac)">orchestrator</span><span class="mono" style="font-size:11px;color:var(--tx3)">12:02</span></div>
+      <div style="color:var(--tx);text-wrap:pretty">Abri <b style="font-weight:600">frontend</b> com o claude na workspace 1 e mandei a tarefa. Pela memória, o front usa Vite + React e nenhuma tarefa fecha sem rodar os testes. Passei as duas coisas junto.</div>
+      <div style="margin-top:8px;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--s1)">
+        <div style="display:flex;gap:8px;align-items:baseline;font-size:11.5px;line-height:1.7" class="mono"><span style="color:var(--ok)">✔</span><span style="color:var(--tx)">retrieve_memory</span><span class="trunc" style="color:var(--tx3)">loja · “página de checkout” · 3 achados</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline;font-size:11.5px;line-height:1.7" class="mono"><span style="color:var(--ok)">✔</span><span style="color:var(--tx)">cli_start</span><span class="trunc" style="color:var(--tx3)">frontend · claude</span></div>
+        <div style="display:flex;gap:8px;align-items:baseline;font-size:11.5px;line-height:1.7" class="mono"><span style="color:var(--ok)">✔</span><span style="color:var(--tx)">cli_send</span><span class="trunc" style="color:var(--tx3)">frontend · 214 caracteres</span></div>
+      </div>
+    </div>
+    
+    <div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px"><span style="font-weight:600;font-size:12.5px;color:var(--tx)">você</span><span class="mono" style="font-size:11px;color:var(--tx3)">12:06</span></div><div>e o backend, terminou as migrações?</div></div>
+    <div><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px"><span style="font-weight:600;font-size:12.5px;color:var(--ac)">orchestrator</span><span class="mono" style="font-size:11px;color:var(--tx3)">12:06</span></div>
+      <div style="color:var(--tx);text-wrap:pretty">Terminou. O backend está ocioso há 2 min: aplicou 3 migrações e o <span class="mono" style="font-size:12px">cargo test</span> passou com 48 testes<span style="display:inline-block;width:7px;height:14px;background:var(--ac);vertical-align:-2px;margin-left:2px"></span></div>
+      <div style="margin-top:6px;font-size:12px;color:var(--tx3)">digitando · <span class="mono" style="font-size:11px">1,2k → 310 tok</span></div>
+    </div>
+  </div>
+  <div style="padding:10px 12px 12px">
+    <div style="border:1px solid var(--bd2);border-radius:8px;background:var(--s1)">
+      <div style="padding:10px 12px 6px;color:var(--tx3);min-height:44px">Mensagem para o orquestrador, ou <span class="mono" style="color:var(--tx2)">/</span> para comandos</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;font-size:12px;color:var(--tx3)">
+        <span>Enter envia · Shift+Enter quebra linha</span><div style="flex:1"></div>
+        <span class="btn btn-p" style="width:28px;height:28px;padding:0;justify-content:center"><svg class="ico" viewBox="0 0 16 16" style=""><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></span>
+      </div>
+    </div>
+  </div>
+</section><section style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)">
+  <div style="height:40px;flex:none;display:flex;align-items:center;gap:4px;padding:0 10px;border-bottom:1px solid var(--bd)">
+    <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;background:var(--s3);font-weight:500"><span class="mono" style="color:var(--tx3)">1</span>principal<span class="mono" style="font-size:11px;color:var(--tx3)">3</span></span>
+    <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;color:var(--tx2)"><span class="mono" style="color:var(--tx3)">2</span>migrações<span class="mono" style="font-size:11px;color:var(--tx3)">1</span></span>
+    <span style="display:inline-flex;align-items:center;height:28px;padding:0 10px;color:var(--tx3)" class="mono">3</span>
+    <div style="flex:1"></div>
+    <span style="display:inline-flex;align-items:center;gap:6px;color:var(--tx3);font-size:12px"><svg class="ico" viewBox="0 0 16 16" style=""><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/></svg><span class="mono" style="font-size:11.5px;color:var(--tx2)">~/projetos/loja</span>(projeto)</span>
+    <span class="btn" style="height:28px;margin-left:8px"><svg class="ico" viewBox="0 0 16 16" style=""><path d="M8 3.5v9M3.5 8h9"/></svg>CLI</span>
+  </div>
+  <div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px;padding:10px">
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid var(--ac);border-radius:8px;background:var(--term);overflow:hidden">
+  <div style="height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 6px 0 10px;border-bottom:1px solid var(--bd);background:var(--s1)">
+    <span style="font-weight:600">frontend</span>
+    <span class="mono" style="font-size:11px;padding:1px 6px;border:1px solid var(--bd2);border-radius:4px;color:var(--tx2)">claude</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;color:var(--ac);font-size:12px;white-space:nowrap"><span style="font-size:10px">⚙</span>trabalhando</span><span class="mono" style="font-size:11px;color:var(--tx3)">1m12s</span>
+    <div style="flex:1"></div>
+    <span class="kbd">Alt 1</span>
+    <span style="display:flex;color:var(--tx3);padding:4px"><svg class="ico" viewBox="0 0 16 16" style=""><path d="M9.5 3H13v3.5M6.5 13H3V9.5M13 3 9 7M3 13l4-4"/></svg></span>
+    <span style="display:flex;color:var(--tx3);padding:4px"><svg class="ico" viewBox="0 0 16 16" style=""><path d="m4.5 4.5 7 7M11.5 4.5l-7 7"/></svg></span>
+  </div>
+  <div class="mono" style="flex:1;overflow:hidden;padding:10px 12px;font-size:11.5px;line-height:17px"><div style="color:var(--tx);white-space:pre"><span style="color:var(--tx3)">&gt;</span> crie a página de checkout e rode os testes</div><div style="color:var(--tx);white-space:pre"> </div><div style="color:var(--tx);white-space:pre"><span style="color:var(--ok)">●</span> orchestrator - retrieve_memory (loja)</div><div style="color:var(--tx2);white-space:pre">  <span style="color:var(--tx3)">⎿</span>  3 memórias: Vite + React, testes</div><div style="color:var(--tx);white-space:pre"> </div><div style="color:var(--tx);white-space:pre"><span style="color:var(--ok)">●</span> Read(src/routes/index.tsx)</div><div style="color:var(--tx2);white-space:pre">  <span style="color:var(--tx3)">⎿</span>  Read 42 lines</div><div style="color:var(--tx);white-space:pre"> </div><div style="color:var(--tx);white-space:pre"><span style="color:var(--ok)">●</span> Write(src/pages/Checkout.tsx)</div><div style="color:var(--tx2);white-space:pre">  <span style="color:var(--tx3)">⎿</span>  Wrote 118 lines</div><div style="color:var(--tx);white-space:pre"> </div><div style="color:var(--tx);white-space:pre"><span style="color:var(--ok)">●</span> Bash(npm run test -- checkout)</div><div style="color:var(--tx2);white-space:pre">  <span style="color:var(--tx3)">⎿</span>  ✓ Checkout.test.tsx (6 tests) 412ms</div><div style="color:var(--tx);white-space:pre"> </div><div style="color:var(--tx);white-space:pre"><span style="color:var(--ac)">✻</span> Resumindo… <span style="color:var(--tx3)">(1m 12s · ↓ 2.1k tokens)</span></div></div>
+  
+</div><div style="flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid var(--bd);border-radius:8px;background:var(--term);overflow:hidden">
+  <div style="height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 6px 0 10px;border-bottom:1px solid var(--bd);background:var(--s1)">
+    <span style="font-weight:600">backend</span>
+    <span class="mono" style="font-size:11px;padding:1px 6px;border:1px solid var(--bd2);border-radius:4px;color:var(--tx2)">codex</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok);font-size:12px;white-space:nowrap"><span style="font-size:10px">●</span>ociosa</span>
+    <div style="flex:1"></div>
+    <span class="kbd">Alt 2</span>
+    <span style="display:flex;color:var(--tx3);padding:4px"><svg class="ico" viewBox="0 0 16 16" style=""><path d="M9.5 3H13v3.5M6.5 13H3V9.5M13 3 9 7M3 13l4-4"/></svg></span>
+    <span style="display:flex;color:var(--tx3);padding:4px"><svg class="ico" viewBox="0 0 16 16" style=""><path d="m4.5 4.5 7 7M11.5 4.5l-7 7"/></svg></span>
+  </div>
+  <div class="mono" style="flex:1;overflow:hidden;padding:10px 12px;font-size:11.5px;line-height:17px"><div style="color:var(--tx);white-space:pre"><span style="color:var(--tx3)">›</span> aplique as migrações de pedidos e rode os testes</div><div style="color:var(--tx);white-space:pre"> </div><div style="color:var(--tx);white-space:pre"><span style="color:var(--tx2)">•</span> Ran sqlx migrate run</div><div style="color:var(--tx2);white-space:pre">  <span style="color:var(--tx3)">└</span> Applied 20260911_pedidos.sql</div><div style="color:var(--tx2);white-space:pre">    Applied 20260911_itens.sql</div><div style="color:var(--tx2);white-space:pre">    Applied 20260912_pagamentos.sql</div><div style="color:var(--tx);white-space:pre"><span style="color:var(--tx2)">•</span> Ran cargo test</div><div style="color:var(--tx2);white-space:pre">  <span style="color:var(--tx3)">└</span> test result: <span style="color:var(--ok)">ok</span>. 48 passed; 0 failed</div><div style="color:var(--tx);white-space:pre"> </div><div style="color:var(--tx);white-space:pre"><span style="color:var(--av)">•</span> Quer rodar: git push --force origin main</div><div style="color:var(--av);white-space:pre">  <span style="color:var(--tx3)">└</span> aguardando o dono (F2)</div></div>
+  
+</div>
+    <div style="grid-column:1 / span 2;display:flex;min-height:0"><div style="flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid var(--bd);border-radius:8px;background:var(--term);overflow:hidden">
+  <div style="height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 6px 0 10px;border-bottom:1px solid var(--bd);background:var(--s1)">
+    <span style="font-weight:600">Agente #1</span>
+    <span class="mono" style="font-size:11px;padding:1px 6px;border:1px solid var(--bd2);border-radius:4px;color:var(--tx2)">opus · effort:high</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;color:var(--ac);font-size:12px;white-space:nowrap"><span style="font-size:10px">⚙</span>trabalhando</span><span class="mono" style="font-size:11px;color:var(--tx3)">auto 3/10</span>
+    <div style="flex:1"></div>
+    <span class="kbd">Alt 3</span>
+    <span style="display:flex;color:var(--tx3);padding:4px"><svg class="ico" viewBox="0 0 16 16" style=""><path d="M9.5 3H13v3.5M6.5 13H3V9.5M13 3 9 7M3 13l4-4"/></svg></span>
+    <span style="display:flex;color:var(--tx3);padding:4px"><svg class="ico" viewBox="0 0 16 16" style=""><path d="m4.5 4.5 7 7M11.5 4.5l-7 7"/></svg></span>
+  </div>
+  <div class="mono" style="flex:1;overflow:hidden;padding:10px 12px;font-size:11.5px;line-height:17px"><div style="color:var(--tx);white-space:pre"><span style="color:var(--tx3)">tarefa:</span> revisar a acessibilidade do checkout e corrigir o que faltar</div><div style="color:var(--tx);white-space:pre"> </div><div style="color:var(--tx2);white-space:pre">✔ passo 2: labels ligados aos campos de cartão e CEP</div><div style="color:var(--tx2);white-space:pre">✔ passo 3: foco visível nos botões, contraste 4.8:1</div><div style="color:var(--tx);white-space:pre"><span style="color:var(--ac)">⚙</span> Edit src/pages/Checkout.tsx · aria-live no resumo do pedido</div><div style="color:var(--tx);white-space:pre"><span style="color:var(--tx3)">trabalhando · 38s</span></div></div>
+  <div style="flex:none;display:flex;align-items:center;gap:10px;padding:8px 10px;border-top:1px solid var(--bd);background:var(--s1)">
+      <span style="color:var(--tx3)">▸</span><span style="flex:1;color:var(--tx3)">Digite para iterar (vai para a fila)</span>
+      <span class="mono" style="font-size:11px;color:var(--tx3)">⟳ 12,8k → 2,4k tok · US$ 0,0421</span><span class="kbd">Ctrl A autopilot</span>
+    </div>
+</div></div>
+  </div>
+</section></div>
+<footer style="height:28px;display:flex;align-items:center;gap:10px;padding:0 12px;border-top:1px solid var(--bd);background:var(--s1);font-size:12px;color:var(--tx3)">
+  <span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok);font-size:12px;white-space:nowrap"><span style="font-size:10px">●</span>memória pronta</span><span>semântica + reranker</span><span style="color:var(--bd2)">·</span><span>chroma conectado</span><span style="color:var(--bd2)">·</span><span class="mono" style="font-size:11.5px">API 127.0.0.1:10000</span>
+  <div style="flex:1"></div>
+  <span>postura: <span style="color:var(--tx2)">autônomo</span></span><span style="color:var(--bd2)">·</span><span class="mono" style="font-size:11.5px">⟳ 18,4k → 3,2k tok · US$ 0,19</span><span style="color:var(--bd2)">·</span><span>manual <span class="kbd">F1</span></span>
+</footer>
+</div>
+<div style="position:absolute;inset:0;background:var(--scrim)"></div>
+<div style="position:absolute;left:50%;top:92px;width:760px;margin-left:-380px;border:1px solid var(--bd2);border-radius:10px;background:var(--s1);box-shadow:var(--sombra);overflow:hidden">
+  <div style="height:54px;display:flex;align-items:center;gap:10px;padding:0 18px;border-bottom:1px solid var(--bd)">
+    <span class="mono" style="font-size:16px;color:var(--tx)">/</span><span style="width:1.5px;height:20px;background:var(--ac);margin-left:-8px"></span>
+    <span style="flex:1;color:var(--tx3);font-size:14px">comando, projeto ou memória</span>
+    <span style="font-size:12px;color:var(--tx3)">12 comandos</span>
+  </div>
+  <div style="padding:6px 0"><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;background:var(--s3)">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--av)">○</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/cli<span style="color:var(--tx3)"> &lt;nome&gt; [comando]</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">abre uma CLI real nomeada nesta workspace</span>
+      <span style="font-size:12px;color:var(--av);white-space:nowrap">precisa do nome da CLI</span>
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--av)">○</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/agente<span style="color:var(--tx3)"> &lt;tarefa&gt;</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">agente headless que trabalha sozinho num card</span>
+      <span style="font-size:12px;color:var(--av);white-space:nowrap">precisa da tarefa</span>
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--ok)">●</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/modelo<span style="color:var(--tx3)"> [nome]</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">modelo do chat (sem nome abre o seletor)</span>
+      
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--ok)">●</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/pasta<span style="color:var(--tx3)"> &lt;caminho|-&gt;</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">pasta desta workspace (- volta à do projeto)</span>
+      
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--ok)">●</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/projeto<span style="color:var(--tx3)"> [nome]</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">troca de projeto (restaura a conversa dele)</span>
+      
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--av)">○</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/novo-projeto<span style="color:var(--tx3)"> &lt;nome&gt; [caminho]</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">cria um projeto novo e passa a trabalhar nele</span>
+      <span style="font-size:12px;color:var(--av);white-space:nowrap">precisa do nome</span>
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--ok)">●</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/nova<span style="color:var(--tx3)"> </span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">zera a conversa desta workspace</span>
+      
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--er)">✖</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx3)">/aprovar<span style="color:var(--tx3)"> [id]</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx3)">aprova a decisão pendente</span>
+      <span style="font-size:12px;color:var(--er);white-space:nowrap">nenhuma decisão pendente agora</span>
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--er)">✖</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx3)">/negar<span style="color:var(--tx3)"> [id]</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx3)">nega a decisão pendente</span>
+      <span style="font-size:12px;color:var(--er);white-space:nowrap">nenhuma decisão pendente agora</span>
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--av)">○</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/auto<span style="color:var(--tx3)"> [on|off]</span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">avisar o orquestrador quando uma CLI concluir</span>
+      <span style="font-size:12px;color:var(--av);white-space:nowrap">agora: avisos ligados</span>
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--ok)">●</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/caps<span style="color:var(--tx3)"> </span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">o que a build do claude suporta</span>
+      
+    </div><div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;border-radius:6px;margin:0 6px;">
+      <span style="width:14px;text-align:center;font-size:11px;color:var(--ok)">●</span>
+      <span class="mono" style="width:236px;flex:none;font-size:12.5px;color:var(--tx)">/ajuda<span style="color:var(--tx3)"> </span></span>
+      <span class="trunc" style="flex:1;color:var(--tx2)">abre o manual completo</span>
+      
+    </div></div>
+  <div style="display:flex;align-items:center;gap:14px;height:42px;padding:0 18px;border-top:1px solid var(--bd);background:var(--s2);font-size:12px;color:var(--tx3)">
+    <span class="mono" style="color:var(--tx2)">/cli &lt;nome&gt; [comando]</span><span style="color:var(--av)">precisa do nome da CLI</span>
+    <div style="flex:1"></div>
+    <span><span class="kbd">↑↓</span> escolhe</span><span><span class="kbd">Tab</span> completa</span><span><span class="kbd">Enter</span> executa</span><span><span class="kbd">Esc</span> fecha</span>
+  </div>
+</div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900},"tema":{"editor":"enum","options":["escuro","claro"],"default":"escuro"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tema = this.props.tema ?? 'escuro';
+    return { temaClasse: tema === 'claro' ? 't-claro' : 't-escuro' };
+  }
+}
+</script>
+</body>
+</html>

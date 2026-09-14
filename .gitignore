@@ -1,0 +1,30 @@
+# Rust
+/target/
+**/target/
+
+# Node / web
+node_modules/
+web/apps/desktop/dist/
+web/apps/memory/dist/
+web/apps/desktop/src-tauri/gen/
+web/apps/desktop/src-tauri/binaries/
+*.tsbuildinfo
+
+# Bancos locais (memória, filas) — nunca versionar dados do usuário
+*.db
+*.db-shm
+*.db-wal
+
+# Modelos baixados em runtime (fastembed)
+.fastembed_cache/
+
+# Configuração gerada por projeto (caminhos absolutos da máquina do usuário)
+/.mcp.json
+/.claude/
+
+# Editor / SO
+.DS_Store
+*.swp
+
+# Logs
+*.log

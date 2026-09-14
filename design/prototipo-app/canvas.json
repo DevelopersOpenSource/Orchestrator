@@ -1,0 +1,71 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Workbench",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Paleta.dc.html",
+      "title": "Paleta de comandos",
+      "x": 1540,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Decisoes.dc.html",
+      "title": "Decisões e auditoria",
+      "x": 0,
+      "y": 1040,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Memoria.dc.html",
+      "title": "Painel de memória",
+      "x": 1540,
+      "y": 1040,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Globo.dc.html",
+      "title": "Página da memória · 127.0.0.1:10000",
+      "x": 0,
+      "y": 2080,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "GloboCelular.dc.html",
+      "title": "Página da memória · celular",
+      "x": 1540,
+      "y": 2080,
+      "w": 390,
+      "h": 844
+    }
+  ],
+  "annotations": [
+    {
+      "id": "direcao",
+      "x": 3080,
+      "y": 0,
+      "w": 340,
+      "text": "Direção visual\n\nBase zinco neutra, um acento azul-aço, IBM Plex Sans na interface e JetBrains Mono nos terminais. Bordas de 1 px, raio 6 a 10 px, sombra só no que flutua. Sem vidro, sem gradiente, sem brilho: o brilho existe só no globo, onde é conteúdo.\n\nEstado sempre com glifo, cor e texto: ● pronto · ○ falta argumento · ✖ indisponível.\n\nAs telas do app trocam entre escuro e claro no chip \"tema\" acima de cada uma.\n\nO globo aqui é estático. No app ele gira devagar, as partículas correm pelos ramos e a câmera voa até o melhor resultado."
+    },
+    {
+      "id": "celular",
+      "x": 2030,
+      "y": 2080,
+      "w": 300,
+      "text": "Em tela estreita, o painel de resultados vira uma folha que sobe de baixo. Os filtros ficam atrás do botão no canto."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

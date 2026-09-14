@@ -1,0 +1,36 @@
+[package]
+name = "orchestrator-memoryd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "orchestrator-memoryd"
+path = "src/main.rs"
+
+[dependencies]
+orchestrator-core = { path = "../core" }
+orchestrator-memory = { path = "../memory" }
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+fastembed.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+libc = "0.2"
+sha2 = "0.10"
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+uuid.workspace = true
+rust-embed = "8.12"
+mime_guess = "2"
+
+[dev-dependencies]
+tempfile = "3"
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

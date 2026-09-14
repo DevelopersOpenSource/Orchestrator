@@ -1,0 +1,20 @@
+[package]
+name = "orchestrator-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+orchestrator-core = { path = "../core" }
+orchestrator-cli-adapter = { path = "../cli-adapter" }
+orchestrator-llm = { path = "../llm" }
+orchestrator-memory = { path = "../memory" }
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+portable-pty.workspace = true
+libc = "0.2"
+vt100.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

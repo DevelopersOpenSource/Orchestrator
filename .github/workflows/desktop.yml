@@ -1,0 +1,70 @@
+# Pacotes do app desktop do Orchestrator.
+#
+# Linux sai em Ubuntu 22.04 de propósito: binário compilado numa glibc antiga
+# roda nas distros novas; o contrário não (compilado no Fedora 44 exige a glibc
+# dele). Windows fica manual até a porta do núcleo (ver o job).
+name: app desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: "Tentar também o Windows (o núcleo ainda usa socket unix e grupos de processo POSIX)"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bibliotecas do WebKitGTK e do empacotamento
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Testes do workspace
+        run: cargo test --workspace --exclude orchestrator-desktop
+
+      - name: AppImage, deb e rpm
+        run: scripts/empacotar-linux.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orchestrator-linux
+          path: |
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
+
+  windows:
+    # Bloqueios conhecidos antes de ligar de vez:
+    # - memoryd, hook e MCP conversam por socket unix (daemon.rs/server.rs):
+    #   no Windows precisa de named pipe;
+    # - o encerramento de CLI mata a SESSÃO POSIX (term.rs, libc::killpg):
+    #   no Windows precisa de Job Object;
+    # - o ChromaDB sobe por podman.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows }}
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compilar o núcleo (para medir o que falta portar)
+        run: cargo build --release -p orchestrator-engine -p orchestrator-memoryd -p orchestrator-mcp-server -p orchestrator-cli

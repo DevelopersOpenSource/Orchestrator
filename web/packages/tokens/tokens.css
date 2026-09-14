@@ -1,0 +1,102 @@
+/* Tokens do Orchestrator — os valores aprovados no protótipo visual
+   (design/prototipo-app/comum.mjs). Base zinco neutra, UM acento azul-aço,
+   estados verde/âmbar/vermelho sempre acompanhados de glifo e texto.
+   Sem vidro, sem gradiente decorativo: brilho só onde é conteúdo (o globo). */
+
+:root {
+  color-scheme: light;
+  --bg: #f6f6f7;
+  --s1: #ffffff;
+  --s2: #f1f1f3;
+  --s3: #e9e9ec;
+  --bd: #e4e4e7;
+  --bd2: #d4d4d8;
+  --tx: #18181b;
+  --tx2: #52525b;
+  --tx3: #71717a;
+  --ac: #2d73a6;
+  --ac-bg: #e6f0f7;
+  --ac-tx: #ffffff;
+  --ok: #1f8a4c;
+  --ok-bg: #e5f4eb;
+  --av: #a86b0c;
+  --av-bg: #fbf0dc;
+  --er: #c93a32;
+  --er-bg: #fbe9e7;
+  --k-sec: #c93a32;
+  --k-arq: #3a68c9;
+  --k-pra: #1b8796;
+  --k-sin: #2e8a4e;
+  --k-dec: #8a55b8;
+  --term: #fbfbfc;
+  --scrim: rgba(24, 24, 27, 0.35);
+  --sombra: 0 12px 32px rgba(24, 24, 27, 0.16);
+
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --raio-s: 5px;
+  --raio: 6px;
+  --raio-l: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111113;
+    --s1: #18181b;
+    --s2: #1f1f23;
+    --s3: #27272c;
+    --bd: #2a2a30;
+    --bd2: #3a3a42;
+    --tx: #e7e7ea;
+    --tx2: #a1a1aa;
+    --tx3: #71717a;
+    --ac: #6aa9d8;
+    --ac-bg: #1b2a36;
+    --ac-tx: #0d1a24;
+    --ok: #4fb67a;
+    --ok-bg: #16271d;
+    --av: #d9a441;
+    --av-bg: #2e2413;
+    --er: #e5534b;
+    --er-bg: #31181a;
+    --k-sec: #e5534b;
+    --k-arq: #6b95e8;
+    --k-pra: #3fb0bf;
+    --k-sin: #5fb97a;
+    --k-dec: #b387d9;
+    --term: #0e0e10;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --sombra: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111113;
+  --s1: #18181b;
+  --s2: #1f1f23;
+  --s3: #27272c;
+  --bd: #2a2a30;
+  --bd2: #3a3a42;
+  --tx: #e7e7ea;
+  --tx2: #a1a1aa;
+  --tx3: #71717a;
+  --ac: #6aa9d8;
+  --ac-bg: #1b2a36;
+  --ac-tx: #0d1a24;
+  --ok: #4fb67a;
+  --ok-bg: #16271d;
+  --av: #d9a441;
+  --av-bg: #2e2413;
+  --er: #e5534b;
+  --er-bg: #31181a;
+  --k-sec: #e5534b;
+  --k-arq: #6b95e8;
+  --k-pra: #3fb0bf;
+  --k-sin: #5fb97a;
+  --k-dec: #b387d9;
+  --term: #0e0e10;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --sombra: 0 12px 32px rgba(0, 0, 0, 0.45);
+}

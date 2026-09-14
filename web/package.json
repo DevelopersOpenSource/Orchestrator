@@ -1,0 +1,14 @@
+{
+  "name": "orchestrator-web",
+  "private": true,
+  "description": "Interfaces web do Orchestrator: a página da memória e o app desktop.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:memory": "npm run build --workspace @orchestrator/memory-page",
+    "dev:memory": "npm run dev --workspace @orchestrator/memory-page",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

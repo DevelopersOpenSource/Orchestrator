@@ -1,0 +1,41 @@
+[package]
+name = "orchestrator-service"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "orchestrator-service"
+path = "src/main.rs"
+
+[dependencies]
+orchestrator-core = { path = "../core" }
+orchestrator-memory = { path = "../memory" }
+orchestrator-cli-adapter = { path = "../cli-adapter" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+directories.workspace = true
+
+# Packaging metadata (cargo-deb / cargo-generate-rpm)
+[package.metadata.deb]
+maintainer = "sodre"
+extended-description = "Orchestrator service — semantic memory and CLI-agent orchestration"
+assets = [
+    ["target/release/orchestrator-service", "usr/bin/", "755"],
+    ["target/release/orchestrator", "usr/bin/", "755"],
+    ["target/release/orchestrator-mcp", "usr/bin/", "755"],
+    ["target/release/orchestrator-hook", "usr/bin/", "755"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/orchestrator-service", dest = "/usr/bin/orchestrator-service", mode = "755" },
+    { source = "target/release/orchestrator", dest = "/usr/bin/orchestrator", mode = "755" },
+    { source = "target/release/orchestrator-mcp", dest = "/usr/bin/orchestrator-mcp", mode = "755" },
+    { source = "target/release/orchestrator-hook", dest = "/usr/bin/orchestrator-hook", mode = "755" },
+]

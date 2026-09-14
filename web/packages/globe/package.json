@@ -1,0 +1,24 @@
+{
+  "name": "@orchestrator/globe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "O globo de memórias: polos, ramos e vizinhança de sentido (3D, com reserva 2D).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "3d-force-graph": "1.80.0",
+    "d3-force-3d": "3.0.6",
+    "force-graph": "1.51.4",
+    "three": "0.186.0",
+    "three-spritetext": "1.10.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "7.0.2"
+  }
+}

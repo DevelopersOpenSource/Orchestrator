@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Memória · Orchestrator</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect x='1' y='1' width='18' height='18' rx='5' fill='%23e7e7ea'/%3E%3Ccircle cx='10' cy='10' r='4.2' fill='none' stroke='%23111113' stroke-width='2'/%3E%3Ccircle cx='15.2' cy='4.8' r='1.8' fill='%236aa9d8'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="topo">
+      <div class="marca">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="5" class="marca-fundo" /><circle cx="10" cy="10" r="4.2" class="marca-anel" /><circle cx="15.2" cy="4.8" r="1.8" class="marca-ponto" /></svg>
+        <span class="marca-nome">Memória</span>
+        <span class="marca-endereco" id="endereco"></span>
+      </div>
+
+      <nav class="abas" role="tablist" aria-label="Modo de ver a memória">
+        <button role="tab" data-vista="globo" aria-selected="true">Globo</button>
+        <button role="tab" data-vista="lista" aria-selected="false">Lista</button>
+        <button role="tab" data-vista="api" aria-selected="false">API</button>
+      </nav>
+
+      <div class="topo-direita">
+        <span class="estado" id="estado" role="status"><span class="estado-ponto"></span><span id="estado-texto">Conectando…</span></span>
+        <button class="botao" id="botao-token" type="button" title="Criar, editar e apagar memórias por esta página">Editar memórias</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="vista vista-globo" id="vista-globo" aria-label="Globo de memórias">
+        <div class="palco" id="palco">
+          <div class="painel-busca">
+            <form id="busca" role="search">
+              <label class="campo-busca">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4" /><path d="m10 10 3 3" /></svg>
+                <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Pergunte à memória — ex.: qual banco o backend usa?" aria-describedby="dica-busca" />
+              </label>
+              <p class="dica" id="dica-busca">Enquanto você digita aparecem os parecidos pelo sentido. <kbd>Enter</kbd> confirma com o reranker.</p>
+            </form>
+            <div class="filtros">
+              <select id="filtro-projeto" aria-label="Projeto"><option value="">Todos os projetos</option></select>
+              <select id="filtro-tipo" aria-label="Tipo">
+                <option value="">Todos os tipos</option>
+                <option value="security">Segurança</option>
+                <option value="architecture">Arquitetura</option>
+                <option value="practice">Prática</option>
+                <option value="syntax">Sintaxe</option>
+                <option value="decision">Decisão</option>
+              </select>
+              <select id="filtro-origem" aria-label="Quem escreveu">
+                <option value="">Qualquer autor</option>
+                <option value="dono">Só do dono</option>
+                <option value="ia">Só das IAs</option>
+                <option value="global">Só globais</option>
+              </select>
+              <span class="contagem" id="contagem"></span>
+            </div>
+          </div>
+
+          <div class="globo" id="globo" aria-hidden="true"></div>
+
+          <div class="rodape-palco">
+            <ul class="legenda" id="legenda" aria-label="Legenda"></ul>
+            <p class="dica" id="dica-globo">Arraste para girar · clique numa bolinha para abrir</p>
+          </div>
+        </div>
+
+        <aside class="resultados" id="resultados" aria-label="Resultados">
+          <button class="alca" id="alca" type="button" aria-label="Expandir resultados"><span></span></button>
+          <div class="resultados-cabecalho">
+            <h2 id="titulo-resultados">Memórias</h2>
+            <span class="tempo" id="tempo"></span>
+          </div>
+          <ol class="lista-resultados" id="lista-resultados"></ol>
+          <div class="vazio" id="vazio-resultados" hidden></div>
+
+          <article class="detalhe" id="detalhe" hidden>
+            <button class="voltar" id="voltar" type="button">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 4-4 4 4 4" /></svg>Voltar aos resultados
+            </button>
+            <h3 id="detalhe-titulo"></h3>
+            <p class="detalhe-meta" id="detalhe-meta"></p>
+            <div class="detalhe-corpo" id="detalhe-corpo"></div>
+            <div class="detalhe-acoes" id="detalhe-acoes" hidden>
+              <button class="botao" id="editar" type="button">Editar</button>
+              <button class="botao botao-perigo" id="apagar" type="button">Apagar</button>
+            </div>
+          </article>
+        </aside>
+      </section>
+
+      <section class="vista vista-lista" id="vista-lista" hidden aria-label="Todas as memórias">
+        <div class="lista-barra">
+          <input id="filtro-lista" type="search" placeholder="Filtrar pelo título ou texto" aria-label="Filtrar memórias" />
+          <button class="botao botao-primario" id="nova-memoria" type="button" hidden>Nova memória</button>
+        </div>
+        <ul class="todas" id="todas"></ul>
+        <div class="vazio" id="vazio-lista" hidden></div>
+      </section>
+
+      <section class="vista vista-api" id="vista-api" hidden aria-label="Usar pela API">
+        <div class="api-texto">
+          <h2>A memória como API</h2>
+          <p>Tudo o que esta página faz está disponível em <code id="api-base"></code>, só nesta máquina. Ler é livre. Criar, editar e apagar pedem o token que fica em <code>~/.config/orchestrator/memory-api.token</code>.</p>
+          <div class="exemplos" id="exemplos"></div>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="dialogo" id="dialogo-token">
+      <form method="dialog" id="form-token">
+        <h2>Editar memórias por esta página</h2>
+        <p>Para criar, editar ou apagar, cole o token da API. Ele fica no arquivo <code>~/.config/orchestrator/memory-api.token</code> e só é lembrado nesta aba.</p>
+        <label class="campo">Token<input id="token" type="password" autocomplete="off" required minlength="32" /></label>
+        <p class="erro" id="erro-token" hidden></p>
+        <div class="acoes">
+          <button class="botao" value="cancelar" formnovalidate>Cancelar</button>
+          <button class="botao botao-primario" id="salvar-token" value="salvar">Usar este token</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="dialogo" id="dialogo-memoria">
+      <form method="dialog" id="form-memoria">
+        <h2 id="titulo-form">Nova memória</h2>
+        <fieldset class="tipos">
+          <legend>Tipo</legend>
+          <label><input type="radio" name="kind" value="architecture" checked /><span class="ponto k-architecture"></span>Arquitetura</label>
+          <label><input type="radio" name="kind" value="practice" /><span class="ponto k-practice"></span>Prática</label>
+          <label><input type="radio" name="kind" value="decision" /><span class="ponto k-decision"></span>Decisão</label>
+          <label><input type="radio" name="kind" value="syntax" /><span class="ponto k-syntax"></span>Sintaxe</label>
+          <label><input type="radio" name="kind" value="security" /><span class="ponto k-security"></span>Segurança</label>
+        </fieldset>
+        <label class="campo">Título<input id="m-titulo" required maxlength="200" /></label>
+        <label class="campo">O que a IA precisa saber<textarea id="m-corpo" rows="5" maxlength="20000"></textarea></label>
+        <div class="linha">
+          <label class="campo">Onde vale
+            <select id="m-onde"></select>
+          </label>
+          <label class="campo campo-curto">Importância<input id="m-prioridade" type="number" min="0" max="10" value="3" /></label>
+        </div>
+        <p class="dica" id="dica-prioridade">De 0 a 10. A partir de 9, uma prática vira regra fixa, lembrada em todo prompt.</p>
+        <p class="erro" id="erro-memoria" hidden></p>
+        <div class="acoes">
+          <button class="botao" value="cancelar" formnovalidate>Cancelar</button>
+          <button class="botao botao-primario" id="salvar-memoria" value="salvar">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="tpl-resultado">
+      <li>
+        <button class="resultado" type="button">
+          <span class="r-titulo"></span>
+          <span class="r-linha">
+            <span class="r-barra"><span></span></span><span class="r-score"></span>
+            <span class="r-tipo"><span class="ponto"></span><span class="r-tipo-nome"></span></span>
+            <span class="r-onde"></span>
+          </span>
+        </button>
+      </li>
+    </template>
+
+    <div class="aviso" id="aviso" role="status" hidden></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

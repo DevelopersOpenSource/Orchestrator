@@ -1,0 +1,25 @@
+[package]
+name = "orchestrator-desktop"
+description = "App desktop do Orchestrator: o mesmo núcleo da TUI numa janela nativa."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "orchestrator_desktop_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6", features = [] }
+
+[dependencies]
+tauri = { version = "2.11", features = [] }
+tauri-plugin-dialog = "2.7"
+tauri-plugin-opener = "2.5"
+tauri-plugin-single-instance = "2.4"
+orchestrator-core = { path = "../../../../crates/core" }
+orchestrator-engine = { path = "../../../../crates/engine" }
+orchestrator-memory = { path = "../../../../crates/memory" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
