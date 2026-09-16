@@ -3,6 +3,7 @@ import { nucleo, type Card, type Foto, type Linha } from "./nucleo";
 import { Terminal } from "./componentes/Terminal";
 import { Paleta, type AcaoJanela } from "./componentes/Paleta";
 import { Provedores } from "./componentes/Provedores";
+import { Modelos } from "./componentes/Modelos";
 import { Decisoes } from "./componentes/Decisoes";
 import { Manual } from "./componentes/Manual";
 import { Memoria } from "./componentes/Memoria";
@@ -89,6 +90,7 @@ export function App() {
   const [vista, setVista] = useState<Vista>("workbench");
   const [paleta, setPaleta] = useState({ aberta: false, texto: "" });
   const [provedores, setProvedores] = useState(false);
+  const [modelos, setModelos] = useState(false);
   const [manual, setManual] = useState(false);
   const [memoria, setMemoria] = useState(false);
   const [chatVisivel, setChatVisivel] = useState(true);
@@ -102,7 +104,7 @@ export function App() {
     const soltarPedido = nucleo.aoPedir((p) => {
       if (p === "focar-chat") entradaRef.current?.focus();
       if (p === "abrir-manual") setManual(true);
-      if (p === "escolher-modelo") setPaleta({ aberta: true, texto: "/modelo " });
+      if (p === "escolher-modelo") setModelos(true);
       if (p === "escolher-provedor") setProvedores(true);
     });
     return () => {
@@ -254,7 +256,10 @@ export function App() {
                   <span className="forte">Chat</span>
                   <button className="chip mono" onClick={() => setProvedores(true)} title="Trocar quem responde no chat">
                     {foto.provedor}
-                    {foto.modelo ? ` · ${foto.modelo}` : ""}
+                    <span aria-hidden="true">▾</span>
+                  </button>
+                  <button className="chip mono" onClick={() => setModelos(true)} title="Modelo do chat">
+                    {foto.modelo || "padrão"}
                     <span aria-hidden="true">▾</span>
                   </button>
                   <span className="chip">{foto.postura}</span>
@@ -406,6 +411,7 @@ export function App() {
 
       <Paleta aberta={paleta.aberta} textoInicial={paleta.texto} fechar={() => setPaleta({ aberta: false, texto: "" })} aoInserir={inserirNoChat} aoAcao={acao} />
       <Provedores aberta={provedores} fechar={() => setProvedores(false)} />
+      <Modelos aberta={modelos} fechar={() => setModelos(false)} foto={foto} />
       <Manual aberto={manual} fechar={() => setManual(false)} />
       <Memoria aberta={memoria} fechar={() => setMemoria(false)} projeto={foto.projeto} />
     </div>

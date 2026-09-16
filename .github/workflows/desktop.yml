@@ -42,6 +42,9 @@ jobs:
       - name: AppImage, deb e rpm
         run: scripts/empacotar-linux.sh
 
+      - name: Tarball portátil (sem instalar, sem FUSE)
+        run: scripts/empacotar-portatil-linux.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: orchestrator-linux
@@ -49,6 +52,7 @@ jobs:
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
+            dist/*.tar.gz
 
   windows:
     # Bloqueios conhecidos antes de ligar de vez:

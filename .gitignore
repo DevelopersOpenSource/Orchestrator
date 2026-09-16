@@ -2,6 +2,9 @@
 /target/
 **/target/
 
+# Pacotes gerados (AppImage/.deb/.rpm/tarball portátil)
+/dist/
+
 # Node / web
 node_modules/
 web/apps/desktop/dist/

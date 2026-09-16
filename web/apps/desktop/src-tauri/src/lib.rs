@@ -80,6 +80,16 @@ struct Decisao {
 
 #[derive(Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
+struct TesteModelo {
+    /// `"<provedor>/<modelo>"`.
+    chave: String,
+    ok: bool,
+    /// A resposta (sucesso) ou o motivo (falha), curto.
+    texto: String,
+}
+
+#[derive(Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct Foto {
     projetos: Vec<String>,
     projeto: String,
@@ -97,6 +107,12 @@ struct Foto {
     avisos: Vec<String>,
     decisoes: Vec<Decisao>,
     consumo: String,
+    /// As opções do seletor de modelo do provedor ativo — a primeira é
+    /// sempre "padrão do provedor"; o resto vem da API dele quando
+    /// `sincronizar_modelos` já trouxe a lista ao vivo.
+    modelos_opcoes: Vec<String>,
+    modelos_carregando: bool,
+    teste_modelo: Option<TesteModelo>,
 }
 
 fn consumo(entrada: u64, saida: u64, custo: Option<f64>) -> String {
@@ -225,6 +241,12 @@ fn foto(e: &Engine) -> Foto {
             })
             .collect(),
         consumo: consumo(e.chat.tokens_in, e.chat.tokens_out, e.chat.cost),
+        modelos_opcoes: e.model_options(),
+        modelos_carregando: e.models_loading(),
+        teste_modelo: e.last_model_test.as_ref().map(|(chave, r)| match r {
+            Ok(texto) => TesteModelo { chave: chave.clone(), ok: true, texto: texto.clone() },
+            Err(texto) => TesteModelo { chave: chave.clone(), ok: false, texto: texto.clone() },
+        }),
     }
 }
 
@@ -352,6 +374,22 @@ fn escolher_provedor(app: AppHandle, nucleo: State<'_, Nucleo>, nome: String) ->
     };
     avisar_pedidos(&app, eventos);
     Ok(status)
+}
+
+/// Pede à API do provedor ativo a lista de modelos dela (o laço em segundo
+/// plano traz o resultado no próximo `estado`).
+#[tauri::command]
+fn sincronizar_modelos(nucleo: State<'_, Nucleo>) -> Result<(), String> {
+    travar(&nucleo)?.refresh_models();
+    Ok(())
+}
+
+/// Manda "." ao modelo e mostra se ele processa e responde (resultado
+/// também chega pelo `estado`, em `testeModelo`).
+#[tauri::command]
+fn testar_modelo(nucleo: State<'_, Nucleo>, modelo: String) -> Result<(), String> {
+    travar(&nucleo)?.test_model(&modelo);
+    Ok(())
 }
 
 #[tauri::command]
@@ -567,6 +605,8 @@ pub fn run() {
             paleta,
             provedores,
             escolher_provedor,
+            sincronizar_modelos,
+            testar_modelo,
             trocar_workspace,
             focar_card,
             fechar_card,

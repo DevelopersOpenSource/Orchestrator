@@ -45,6 +45,14 @@ export interface Decisao {
   nota: string;
 }
 
+export interface TesteModelo {
+  /** `"<provedor>/<modelo>"`. */
+  chave: string;
+  ok: boolean;
+  /** A resposta (sucesso) ou o motivo (falha), curto. */
+  texto: string;
+}
+
 export interface Foto {
   projetos: string[];
   projeto: string;
@@ -62,6 +70,11 @@ export interface Foto {
   avisos: string[];
   decisoes: Decisao[];
   consumo: string;
+  /** Opções do seletor de modelo do provedor ativo — a 1ª é sempre "padrão
+   * do provedor"; o resto vem da API dele depois de `sincronizarModelos`. */
+  modelosOpcoes: string[];
+  modelosCarregando: boolean;
+  testeModelo: TesteModelo | null;
 }
 
 export interface ItemPaleta {
@@ -92,6 +105,8 @@ export const nucleo = {
   provedores: () => invoke<ItemProvedor[]>("provedores"),
   /** Devolve o que aconteceu: trocou, abriu o login num card, ou o que falta. */
   escolherProvedor: (nome: string) => invoke<string>("escolher_provedor", { nome }),
+  sincronizarModelos: () => invoke<void>("sincronizar_modelos"),
+  testarModelo: (modelo: string) => invoke<void>("testar_modelo", { modelo }),
   trocarWorkspace: (indice: number) => invoke<void>("trocar_workspace", { indice }),
   focarCard: (indice: number) => invoke<void>("focar_card", { indice }),
   fecharCard: (indice: number) => invoke<void>("fechar_card", { indice }),

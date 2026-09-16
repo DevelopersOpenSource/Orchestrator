@@ -242,6 +242,20 @@ pub struct Engine {
     pub config_path: Option<PathBuf>,
     /// Pedidos à interface (foco etc.), drenados por quem desenha.
     events: Vec<EngineEvent>,
+    /// Modelos ao vivo por provedor (`GET /models` da API dele), pelo nome do
+    /// provedor. Só entra aqui quando alguém abre o seletor — nada busca
+    /// sozinho no fundo.
+    pub live_models: std::collections::HashMap<String, Vec<String>>,
+    /// Nome do provedor com um pedido de modelos em andamento agora — evita
+    /// empilhar outra busca em cima de uma que já está a caminho.
+    models_loading: Option<String>,
+    models_tx: std::sync::mpsc::Sender<(String, Result<Vec<String>, String>)>,
+    models_rx: std::sync::mpsc::Receiver<(String, Result<Vec<String>, String>)>,
+    /// Resultado do último teste de modelo (`/provedor/modelo` → texto ou
+    /// erro), para o seletor mostrar ✔/✖ sem travar a interface.
+    pub last_model_test: Option<(String, Result<String, String>)>,
+    model_test_tx: std::sync::mpsc::Sender<(String, Result<String, String>)>,
+    model_test_rx: std::sync::mpsc::Receiver<(String, Result<String, String>)>,
 }
 
 impl Engine {
@@ -268,6 +282,8 @@ impl Engine {
         } else {
             config.llm_providers.clone()
         };
+        let (models_tx, models_rx) = std::sync::mpsc::channel();
+        let (model_test_tx, model_test_rx) = std::sync::mpsc::channel();
         let mut app = Self {
             store,
             chat: ChatState::new(providers[0].clone()),
@@ -301,6 +317,13 @@ impl Engine {
             config: config.clone(),
             config_path: None,
             events: Vec::new(),
+            live_models: std::collections::HashMap::new(),
+            models_loading: None,
+            models_tx,
+            models_rx,
+            last_model_test: None,
+            model_test_tx,
+            model_test_rx,
         };
         // A ordem importa: `restore_chat` SUBSTITUI o transcript, então ele
         // vem primeiro — anunciar antes faria o alerta de decisão pendente
@@ -1415,13 +1438,146 @@ impl Engine {
                 }
             }
             _ => {
-                if !p.model.is_empty() {
+                if let Some(vivos) = self.live_models.get(&p.name) {
+                    // Veio da API do provedor: a lista de verdade, ordenada.
+                    let mut vivos = vivos.clone();
+                    vivos.sort();
+                    out.extend(vivos);
+                } else if !p.model.is_empty() {
                     out.push(p.model.clone());
                 }
             }
         }
         out.dedup();
         out
+    }
+
+    /// A lista de modelos do provedor ativo está sendo buscada agora?
+    pub fn models_loading(&self) -> bool {
+        self.models_loading.as_deref() == Some(self.chat.provider.name.as_str())
+    }
+
+    /// Este provedor tem uma API de listagem de modelos (`GET /models`)?
+    fn models_api_url(&self) -> Option<(String, Option<String>)> {
+        let p = &self.chat.provider;
+        (matches!(p.kind, ProviderKind::OpenAiCompat) && !p.base_url.is_empty()).then(|| {
+            let key = (!p.api_key_env.is_empty())
+                .then(|| std::env::var(&p.api_key_env).ok())
+                .flatten();
+            (p.base_url.clone(), key)
+        })
+    }
+
+    /// Pede à API do provedor ativo a lista de modelos dela, em segundo
+    /// plano — chame ao abrir o seletor. Sem efeito se o provedor não tiver
+    /// essa API, ou se já tiver uma busca dele em andamento.
+    pub fn refresh_models(&mut self) {
+        let Some((base_url, api_key)) = self.models_api_url() else {
+            return;
+        };
+        let provider = self.chat.provider.name.clone();
+        if self.models_loading.as_deref() == Some(provider.as_str()) {
+            return; // já buscando este provedor
+        }
+        self.models_loading = Some(provider.clone());
+        let tx = self.models_tx.clone();
+        std::thread::spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = tx.send((provider, Err(format!("runtime tokio: {e}"))));
+                    return;
+                }
+            };
+            let resultado = rt
+                .block_on(orchestrator_llm::list_models(&base_url, api_key.as_deref()))
+                .map_err(|e| format!("{e:#}"));
+            let _ = tx.send((provider, resultado));
+        });
+    }
+
+    /// Manda "." ao modelo escolhido pela API do provedor ativo (ou, sem uma
+    /// API de listagem, pelo modelo configurado) e devolve se ele processa e
+    /// responde — em segundo plano, sem travar a interface. O resultado sai
+    /// em [`Engine::last_model_test`], drenado por [`Engine::drain_background`].
+    pub fn test_model(&mut self, model: &str) {
+        let provider = self.chat.provider.clone();
+        let model = if model.is_empty() || model == DEFAULT_MODEL_LABEL {
+            provider.model.clone()
+        } else {
+            model.to_string()
+        };
+        let chave = format!("{}/{model}", provider.name);
+        if !matches!(provider.kind, ProviderKind::OpenAiCompat) {
+            self.last_model_test = Some((
+                chave,
+                Err(format!(
+                    "testar modelo direto só existe para provedores HTTP; para {} converse \
+                     mesmo no chat",
+                    provider.kind.tool_label()
+                )),
+            ));
+            return;
+        }
+        if provider.base_url.is_empty() {
+            self.last_model_test = Some((chave, Err("provedor sem endereço configurado".into())));
+            return;
+        }
+        let api_key = (!provider.api_key_env.is_empty())
+            .then(|| std::env::var(&provider.api_key_env).ok())
+            .flatten();
+        if !provider.api_key_env.is_empty() && api_key.is_none() {
+            self.last_model_test =
+                Some((chave, Err(format!("falta a variável {}", provider.api_key_env))));
+            return;
+        }
+        self.last_model_test = Some((chave.clone(), Err("testando…".into())));
+        let tx = self.model_test_tx.clone();
+        std::thread::spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = tx.send((chave, Err(format!("runtime tokio: {e}"))));
+                    return;
+                }
+            };
+            let resultado = rt
+                .block_on(orchestrator_llm::probe_model(
+                    &provider.base_url,
+                    api_key.as_deref(),
+                    &model,
+                ))
+                .map(|(texto, duracao)| {
+                    let resumo: String = texto.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let resumo: String = resumo.chars().take(80).collect();
+                    format!("respondeu em {}ms: {resumo}", duracao.as_millis())
+                })
+                .map_err(|e| format!("{e:#}"));
+            let _ = tx.send((chave, resultado));
+        });
+    }
+
+    /// Drena os fetches de modelo e testes em andamento. Chame a cada tick.
+    fn drain_models(&mut self) {
+        while let Ok((provider, resultado)) = self.models_rx.try_recv() {
+            if self.models_loading.as_deref() == Some(provider.as_str()) {
+                self.models_loading = None;
+            }
+            match resultado {
+                Ok(ids) if !ids.is_empty() => {
+                    self.live_models.insert(provider, ids);
+                }
+                Ok(_) => {
+                    self.status = format!("{provider}: a API não listou nenhum modelo");
+                }
+                Err(e) => {
+                    self.status = format!("{provider}: não consegui listar os modelos ({e})");
+                }
+            }
+        }
+        while let Ok(resultado) = self.model_test_rx.try_recv() {
+            self.last_model_test = Some(resultado);
+        }
     }
 
     /// Os provedores e o estado de cada um agora (a lista do `/provedor`).
@@ -2182,6 +2338,7 @@ impl Engine {
 
     pub fn drain_background(&mut self) {
         self.chat.drain();
+        self.drain_models();
         for ws in &mut self.workspaces {
             for pane in &mut ws.panes {
                 if let Pane::Agent(a) = pane {
@@ -2247,7 +2404,10 @@ impl Engine {
             match arg {
                 // Nome livre: builds novas trazem modelos que o help não lista.
                 Some(name) => self.set_chat_model(&name),
-                None => self.events.push(EngineEvent::ChooseModel),
+                None => {
+                    self.refresh_models();
+                    self.events.push(EngineEvent::ChooseModel);
+                }
             }
         } else if let Some(arg) = command_arg(input, &["/provedor", "/provider"]) {
             match arg {
@@ -2620,6 +2780,108 @@ mod tests {
             e.store.ui_get(CHAT_PROVIDER_KEY).unwrap().as_deref(),
             Some("Ollama (local)")
         );
+    }
+
+    /// Servidor HTTP de mentira numa thread própria: aceita UMA conexão,
+    /// devolve `corpo` como resposta JSON 200, e devolve a URL base
+    /// (`http://127.0.0.1:porta`) para apontar um provedor de teste nela.
+    fn fake_http_server(corpo: &'static str) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = sock.read(&mut buf);
+            let resposta = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{corpo}",
+                corpo.len()
+            );
+            let _ = sock.write_all(resposta.as_bytes());
+        });
+        format!("http://{addr}")
+    }
+
+    /// Espera até `f` ficar verdadeiro, ou desiste (usado para os fetches em
+    /// segundo plano de `refresh_models`/`test_model`).
+    fn wait_until(mut f: impl FnMut() -> bool, ms: u64) -> bool {
+        for _ in 0..(ms / 20) {
+            if f() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        false
+    }
+
+    #[test]
+    fn refresh_models_fetches_and_caches_the_providers_live_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = engine_em(dir.path());
+        let url = fake_http_server(r#"{"data":[{"id":"b-modelo"},{"id":"a-modelo"}]}"#);
+        let idx = e.providers.iter().position(|p| p.name == "Groq").unwrap();
+        e.providers[idx].base_url = url;
+        e.providers[idx].api_key_env.clear(); // sem chave: não trava no fetch
+        e.set_chat_provider(idx);
+
+        assert!(e.live_models.is_empty());
+        e.refresh_models();
+        assert!(e.models_loading(), "deveria estar buscando");
+        assert!(
+            wait_until(|| { e.drain_models(); !e.models_loading() }, 2_000),
+            "o fetch deveria terminar"
+        );
+        // Ordenados: a lista bruta veio b, a — o seletor mostra em ordem.
+        let opcoes = e.model_options();
+        assert_eq!(&opcoes[1..], ["a-modelo", "b-modelo"]);
+
+        // Enquanto UM fetch está em andamento, outro pedido não empilha
+        // outra busca em cima dele.
+        e.refresh_models();
+        e.models_loading = Some("Groq".into()); // simula fetch em andamento
+        e.refresh_models();
+        assert_eq!(e.models_loading.as_deref(), Some("Groq"));
+    }
+
+    #[test]
+    fn refresh_models_does_nothing_for_a_provider_without_a_models_api() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = engine_em(dir.path());
+        e.run_command("/provedor claude code (cli)");
+        e.refresh_models();
+        assert!(!e.models_loading());
+        assert!(e.live_models.is_empty());
+    }
+
+    #[test]
+    fn test_model_reports_the_reply_and_rejects_non_http_providers() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = engine_em(dir.path());
+        let url = fake_http_server(r#"{"choices":[{"message":{"role":"assistant","content":"ok, processei"}}]}"#);
+        let idx = e.providers.iter().position(|p| p.name == "Groq").unwrap();
+        e.providers[idx].base_url = url;
+        e.providers[idx].api_key_env.clear();
+        e.set_chat_provider(idx);
+
+        e.test_model("llama-3.3-70b-versatile");
+        // Estado imediato: "testando…", sem travar a chamada.
+        assert!(e.last_model_test.as_ref().unwrap().1.as_ref().unwrap_err().contains("testando"));
+        assert!(wait_until(
+            || {
+                e.drain_models();
+                e.last_model_test.as_ref().is_some_and(|(_, r)| r.is_ok())
+            },
+            2_000
+        ));
+        let (chave, resultado) = e.last_model_test.take().unwrap();
+        assert_eq!(chave, "Groq/llama-3.3-70b-versatile");
+        assert!(resultado.unwrap().contains("ok, processei"));
+
+        // Provedor sem API HTTP: recusa na hora, sem tentar nada.
+        e.run_command("/provedor claude code (cli)");
+        e.test_model("opus");
+        let (_, erro) = e.last_model_test.as_ref().unwrap();
+        assert!(erro.as_ref().unwrap_err().contains("HTTP"), "{erro:?}");
     }
 
     #[test]

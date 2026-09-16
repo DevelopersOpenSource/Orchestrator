@@ -1,5 +1,9 @@
 //! `orchestrator` — CLI do Orchestrator.
 //!
+//! Sem subcomando (`orchestrator`, como `claude` sozinho abre a sessão
+//! dele), abre a TUI direto — é o uso do dia a dia. Os subcomandos
+//! (`memory`, `run`, `setup`, ...) servem para script/automação.
+//!
 //! NOTA: por enquanto os comandos chamam as bibliotecas diretamente no
 //! mesmo processo (memória e adapter). A comunicação com o serviço de
 //! fundo (`orchestrator-service`) via IPC virá depois; quando existir,
@@ -21,8 +25,9 @@ struct Args {
     #[arg(long)]
     config: Option<PathBuf>,
 
+    /// Sem subcomando: abre a TUI (equivalente a `orchestrator tui`).
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -102,7 +107,7 @@ async fn main() -> Result<()> {
     let cfg = Config::load(&config_path)
         .with_context(|| format!("falha ao carregar configuração de {}", config_path.display()))?;
 
-    match args.command {
+    match args.command.unwrap_or(Command::Tui) {
         Command::Memory { command } => {
             let store = facade::open_memory(&cfg.memory_db_path)?;
             match command {

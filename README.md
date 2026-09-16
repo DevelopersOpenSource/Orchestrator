@@ -20,7 +20,8 @@ Agentes de código de terminal são ótimos individualmente, mas cada um vive is
 - **Guarda memória semântica** — ChromaDB + embeddings multilíngues + reranker, com IAs e regras do dono como autores; cada prompt chega com o índice do que importa.
 - **Decide sozinho no modo autônomo** — aprova ou nega os pedidos das CLIs do workspace conforme o que foi pedido; escala ao dono só o que for crítico demais, fugir do escopo, ou precisar de uma escolha (com alternativas de única ou múltipla escolha).
 - **Roda em sandbox isolada** para testar o que as CLIs produziram (abrir, clicar, digitar, rodar binário) sem tocar na máquina real.
-- **Aparece como TUI (ratatui) e como app desktop (Tauri)** — o mesmo núcleo por trás dos dois, então um comando digitado numa interface se comporta igual na outra.
+- **Aparece como TUI (ratatui) e como app desktop (Tauri)** — o mesmo núcleo por trás dos dois, então um comando digitado numa interface se comporta igual na outra. `orchestrator` sozinho já abre a TUI, como `claude`.
+- **Sincroniza o modelo com a API do provedor** — o seletor busca a lista de modelos de verdade (`GET /models`) e tem um botão "Testar" que manda um `.` só para confirmar que o modelo processa e responde.
 
 ## Interface
 
@@ -90,7 +91,30 @@ Atalhos e comandos numa tela só, sem precisar sair do app para descobrir o que 
 
 ## Instalando
 
-Pacotes Linux (AppImage, `.deb`, `.rpm`) saem de `scripts/empacotar-linux.sh`. Para compilar do zero:
+Um comando abre a TUI — igual `claude`:
+
+```sh
+orchestrator          # abre a TUI direto (`orchestrator tui` também funciona)
+orchestrator-desktop  # o app — no Linux ele também aparece no menu do KDE Plasma
+```
+
+**Dependências** (Rust, Node.js, as bibliotecas do WebKitGTK que o app desktop
+precisa): `scripts/instalar-dependencias.sh` verifica, instala (`--instalar`)
+ou atualiza (`--atualizar`) tudo na versão atual de cada ferramenta; com
+`--provedores` também instala as CLIs de IA opcionais (Codex, Kimi,
+Antigravity, OpenCode).
+
+```sh
+scripts/instalar-dependencias.sh --instalar
+```
+
+**Pacotes Linux**: AppImage, `.deb` e `.rpm` saem de `scripts/empacotar-linux.sh`
+(usa o Tauri); uma pasta/tarball portátil — sem instalar nada, sem depender de
+FUSE — sai de `scripts/empacotar-portatil-linux.sh`. Os dois levam
+`scripts/rodar.sh`, o lançador: abre o app com tela gráfica disponível, a TUI
+sem.
+
+Para compilar do zero:
 
 ```sh
 # workspace inteiro (TUI + serviços de apoio)
@@ -102,6 +126,9 @@ cd apps/desktop && npx tauri build
 ```
 
 Binários gerados: `orchestrator` (TUI), `orchestrator-desktop` (app), `orchestrator-hook` e `orchestrator-mcp` (a trava, instalados por projeto), `orchestrator-memoryd` (a memória).
+
+**Windows**: ainda não tem pacote pronto (bloqueios documentados em
+`.github/workflows/desktop.yml`) — fica para uma próxima etapa.
 
 ## Provedores suportados
 

@@ -190,7 +190,10 @@ impl App {
             match event {
                 EngineEvent::FocusGrid => self.focus = Focus::Terminal,
                 EngineEvent::FocusChat => self.focus = Focus::Chat,
-                EngineEvent::ChooseModel => self.picker = Some(Picker::Model(0)),
+                EngineEvent::ChooseModel => {
+                    self.engine.refresh_models();
+                    self.picker = Some(Picker::Model(0));
+                }
                 EngineEvent::ChooseProvider => {
                     self.picker = Some(Picker::Provider(self.engine.provider_index()))
                 }
@@ -556,8 +559,11 @@ fn handle_key(app: &mut App, key: &KeyEvent) -> bool {
                         app.choose_provider(sel);
                         app.apply_events();
                         // Escolhido um provedor pronto, oferece logo o modelo dele.
-                        if pronto && app.model_options().len() > 1 {
-                            app.picker = Some(Picker::Model(0));
+                        if pronto {
+                            app.refresh_models();
+                            if app.model_options().len() > 1 || app.models_loading() {
+                                app.picker = Some(Picker::Model(0));
+                            }
                         }
                     }
                     Picker::Model(_) => {
@@ -565,6 +571,13 @@ fn handle_key(app: &mut App, key: &KeyEvent) -> bool {
                             app.set_chat_model(&m);
                         }
                     }
+                }
+            }
+            // Manda "." ao modelo em destaque e mostra se ele processa e
+            // responde — sem fechar o seletor nem trocar o modelo ativo.
+            KeyCode::Char('t') if matches!(picker, Picker::Model(_)) => {
+                if let Some(m) = app.model_options().get(sel).cloned() {
+                    app.test_model(&m);
                 }
             }
             _ => {}
@@ -821,7 +834,10 @@ fn handle_chat_key(app: &mut App, key: &KeyEvent, ctrl: bool, alt: bool) {
                 app.picker = Some(Picker::Provider(app.provider_index()));
             }
         }
-        KeyCode::Char('m') if ctrl => app.picker = Some(Picker::Model(0)),
+        KeyCode::Char('m') if ctrl => {
+            app.refresh_models();
+            app.picker = Some(Picker::Model(0));
+        }
         KeyCode::Char('e') if ctrl => {
             app.expand_chat = !app.expand_chat;
             app.status = if app.expand_chat {
@@ -1828,9 +1844,9 @@ fn palette_area(area: Rect, altura: u16) -> Rect {
 }
 
 fn draw_picker(f: &mut Frame, app: &App, picker: Picker) {
-    let (title, sel, items): (&str, usize, Vec<ListItem>) = match picker {
+    let (title, sel, items): (String, usize, Vec<ListItem>) = match picker {
         Picker::Cli(sel) => (
-            " Abrir CLI (↑/↓, Enter, Esc) ",
+            " Abrir CLI (↑/↓, Enter, Esc) ".to_string(),
             sel,
             app.clis
                 .iter()
@@ -1838,7 +1854,8 @@ fn draw_picker(f: &mut Frame, app: &App, picker: Picker) {
                 .collect(),
         ),
         Picker::Provider(sel) => (
-            " Quem responde no chat (● pronto · ○ falta entrar na conta · ✖ falta instalar/chave) ",
+            " Quem responde no chat (● pronto · ○ falta entrar na conta · ✖ falta instalar/chave) "
+                .to_string(),
             sel,
             app.provider_list()
                 .into_iter()
@@ -1859,7 +1876,11 @@ fn draw_picker(f: &mut Frame, app: &App, picker: Picker) {
                 .collect(),
         ),
         Picker::Model(sel) => (
-            " Modelo do chat (↑/↓, Enter, Esc · ou /modelo <nome>) ",
+            format!(
+                " Modelo de {} (↑/↓, Enter, Esc, t testa · ou /modelo <nome>){} ",
+                app.chat.provider.name,
+                if app.models_loading() { " — sincronizando com a API…" } else { "" }
+            ),
             sel,
             app.model_options()
                 .iter()
@@ -1871,11 +1892,23 @@ fn draw_picker(f: &mut Frame, app: &App, picker: Picker) {
                     } else {
                         "  "
                     };
-                    ListItem::new(format!("{marca}{m}"))
+                    // O resultado do último teste fica junto do modelo testado.
+                    let teste = app
+                        .last_model_test
+                        .as_ref()
+                        .filter(|(chave, _)| chave == &format!("{}/{m}", app.chat.provider.name))
+                        .map(|(_, r)| match r {
+                            Ok(ok) => format!("  ✔ {ok}"),
+                            Err(e) if e == "testando…" => "  … testando".to_string(),
+                            Err(e) => format!("  ✖ {e}"),
+                        })
+                        .unwrap_or_default();
+                    ListItem::new(format!("{marca}{m}{teste}"))
                 })
                 .collect(),
         ),
     };
+    let title: &str = &title;
     let area = f.area();
     // A lista de provedores diz o que falta em cada um: precisa de espaço.
     let largura = if matches!(picker, Picker::Provider(_)) { 110 } else { 56 };

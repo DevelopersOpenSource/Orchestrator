@@ -38,7 +38,20 @@ const QUIET: Duration = Duration::from_millis(2_500);
 /// Quiescência longa que conclui o turno MESMO sem casar padrão de prompt.
 /// Rede de segurança: sem isso, uma CLI com prompt desconhecido ficaria
 /// eternamente em `Working` e o orquestrador nunca seria notificado.
+///
+/// Só vale quando a CLI não tem processo filho vivo na sessão dela agora
+/// ([`TermSession::has_active_children`]) — um shell rodando `npm install`
+/// ou um subagente que não imprime nada por um tempo ainda estão
+/// trabalhando, e um "concluído" falso aqui deixa o orquestrador CEGO pro
+/// resto da tarefa: o estado já virou `Idle`, então `tick` não notifica de
+/// novo quando o trabalho de verdade terminar.
 const QUIET_HARD: Duration = Duration::from_millis(8_000);
+
+/// Teto absoluto de quiescência: conclui o turno mesmo com filho vivo na
+/// sessão. Rede de segurança para um processo órfão que nunca sai (um
+/// servidor de teste esquecido rodando) — sem isto, `has_active_children`
+/// travaria o card em `Working` para sempre.
+const QUIET_ABSOLUTE: Duration = Duration::from_secs(120);
 
 /// Quantas linhas da tela vão no snapshot mandado ao orquestrador.
 const TAIL_LINES: usize = 40;
@@ -594,13 +607,30 @@ impl TermSession {
         }
         let quiet = self.quiet_for();
         let screen = self.screen_text();
-        let done = (quiet >= QUIET && looks_idle(&screen)) || quiet >= QUIET_HARD;
+        let done = (quiet >= QUIET && looks_idle(&screen))
+            || (quiet >= QUIET_HARD && !self.has_active_children())
+            || quiet >= QUIET_ABSOLUTE;
         if !done {
             return None;
         }
         self.state = CliState::Idle;
         self.sent_at = None;
         Some(self.screen_tail(TAIL_LINES))
+    }
+
+    /// A CLI tem algum processo filho vivo na sessão dela agora — um shell
+    /// rodando um comando, um subagente que ela abriu?
+    ///
+    /// `self.pid` é o líder de sessão (o `portable-pty` chama `setsid` antes
+    /// de trocar de programa — ver o campo). Mais de um membro na sessão
+    /// significa que existe ALGUÉM além do processo raiz da CLI ainda vivo.
+    /// Só em Linux (`/proc`); nas outras plataformas volta `false`, e o
+    /// comportamento cai no [`QUIET_HARD`] de antes.
+    fn has_active_children(&self) -> bool {
+        cfg!(target_os = "linux")
+            && self
+                .pid
+                .is_some_and(|sid| membros_da_sessao(sid as i32).len() > 1)
     }
 
     /// Histórico da CLI (o que ela escreveu desde que abriu), da linha mais
@@ -1242,6 +1272,32 @@ mod pty_tests {
         assert!(t.tick().is_some());
         assert_eq!(t.state(), CliState::Exited);
         assert!(t.tick().is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn has_active_children_sees_a_background_process_in_the_session() {
+        // O shell some sem prompt (`wait`) enquanto o filho roda em segundo
+        // plano — o caso real de um shell/subagente trabalhando em silêncio
+        // que o QUIET_HARD, sozinho, confundiria com "concluído".
+        let mut t = TermSession::spawn_env(
+            "filhos".into(),
+            "sh",
+            &["-c".into(), "sleep 2 & wait".into()],
+            std::path::Path::new("/tmp"),
+            24,
+            80,
+            &[],
+        )
+        .expect("spawn");
+        t.managed = true;
+        assert!(
+            wait_until(&mut t, |t| t.has_active_children(), 1_000),
+            "o sleep em segundo plano deveria aparecer como filho vivo da sessão"
+        );
+        // Termina o filho: some da sessão, e o processo principal sai também.
+        assert!(wait_until(&mut t, |t| t.is_exited(), 4_000));
+        assert!(!t.has_active_children());
     }
 
     #[test]

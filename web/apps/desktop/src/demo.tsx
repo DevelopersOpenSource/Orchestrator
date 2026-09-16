@@ -3,7 +3,7 @@
 // (`npm run dev` e abrir /demo.html) — o app de verdade usa main.tsx.
 
 import { mockIPC } from "@tauri-apps/api/mocks";
-import type { Foto, ItemPaleta, ItemProvedor } from "./nucleo";
+import type { Foto, ItemPaleta, ItemProvedor, TesteModelo } from "./nucleo";
 
 const ESC = "\x1b";
 const frontend = [
@@ -116,6 +116,9 @@ const foto: Foto = {
     },
   ],
   consumo: "18,4k → 3,2k tok · US$ 0,19",
+  modelosOpcoes: ["padrão do provedor", "opus", "sonnet", "haiku"],
+  modelosCarregando: false,
+  testeModelo: null,
 };
 
 const paleta: ItemPaleta[] = [
@@ -151,6 +154,16 @@ mockIPC(async (cmd, args) => {
       return provedores;
     case "escolher_provedor":
       return `chat com ${String(a.nome)}`;
+    case "sincronizar_modelos":
+      // Simula a sincronização: a API do provedor devolve modelos novos.
+      foto.modelosOpcoes = ["padrão do provedor", "opus", "opus-4.6", "sonnet", "haiku"];
+      return null;
+    case "testar_modelo": {
+      const modelo = String(a.modelo);
+      const resultado: TesteModelo = { chave: `${foto.provedor}/${modelo}`, ok: true, texto: 'respondeu em 640ms: "oi! tudo certo por aqui."' };
+      foto.testeModelo = resultado;
+      return null;
+    }
     case "paleta":
       return paleta.filter((p) => p.nome.startsWith(String(a.texto ?? "/").split(" ")[0] || "/"));
     case "memoria_api":
@@ -181,7 +194,10 @@ if (params.get("vista") === "decisoes") {
   setTimeout(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "F2" })), 400);
 }
 if (params.get("provedores")) {
-  setTimeout(() => (document.querySelector(".chat-topo button.chip") as HTMLButtonElement | null)?.click(), 400);
+  setTimeout(() => (document.querySelectorAll(".chat-topo button.chip")[0] as HTMLButtonElement | null)?.click(), 400);
+}
+if (params.get("modelos")) {
+  setTimeout(() => (document.querySelectorAll(".chat-topo button.chip")[1] as HTMLButtonElement | null)?.click(), 400);
 }
 if (params.get("manual")) {
   setTimeout(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "F1" })), 400);

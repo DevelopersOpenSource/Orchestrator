@@ -172,6 +172,52 @@ pub fn parse_assistant_turn(value: &serde_json::Value) -> Result<AssistantTurn> 
     })
 }
 
+/// Pede a lista de modelos do provedor (`GET {base_url}/models`, convenção
+/// da API compatível com OpenAI) e devolve os ids, na ordem que o provedor
+/// mandou.
+pub async fn list_models(base_url: &str, api_key: Option<&str>) -> Result<Vec<String>> {
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+    let mut req = reqwest::Client::new().get(&url);
+    if let Some(key) = api_key {
+        req = req.bearer_auth(key);
+    }
+    let resp = req.send().await.with_context(|| format!("chamando {url}"))?;
+    let status = resp.status();
+    let body = resp.text().await.context("lendo corpo da resposta")?;
+    if !status.is_success() {
+        bail!("HTTP {status} de {url}: {}", truncate(&body, 300));
+    }
+    let value: serde_json::Value = serde_json::from_str(&body)
+        .with_context(|| format!("resposta não é JSON: {}", truncate(&body, 200)))?;
+    let ids = value
+        .get("data")
+        .and_then(serde_json::Value::as_array)
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|m| m.get("id").and_then(serde_json::Value::as_str))
+                .map(str::to_owned)
+                .collect()
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("resposta sem data[].id: {}", truncate(&body, 300))
+        })?;
+    Ok(ids)
+}
+
+/// Manda uma mensagem mínima (`.`) ao modelo e devolve o que ele respondeu, e
+/// quanto levou — o botão "Testar" do seletor: prova que o modelo processa e
+/// devolve algo, sem gastar contexto de verdade.
+pub async fn probe_model(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+) -> Result<(String, std::time::Duration)> {
+    let start = std::time::Instant::now();
+    let text = chat_completion(base_url, api_key, model, &[ChatMessage::user(".".to_string())]).await?;
+    Ok((text, start.elapsed()))
+}
+
 fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
@@ -275,6 +321,74 @@ mod tests {
         assert_eq!(turno.tool_calls[0].name, "cli_start");
         assert_eq!(turno.tool_calls[0].arguments, r#"{"name":"api"}"#);
         assert_eq!((turno.input_tokens, turno.output_tokens), (50, 4));
+    }
+
+    /// Um servidor HTTP de mentira que devolve `resposta` em toda requisição
+    /// e conta quantas chegaram, para testar `list_models`/`probe_model` sem
+    /// bater na rede.
+    async fn fake_server(
+        resposta: &'static str,
+    ) -> (std::net::SocketAddr, tokio::task::JoinHandle<Vec<u8>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = Vec::new();
+            let mut pedaco = [0u8; 4096];
+            loop {
+                let n = sock.read(&mut pedaco).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&pedaco[..n]);
+                if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break; // sem corpo (GET) ou corpo pequeno; basta para o teste
+                }
+            }
+            let corpo = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{resposta}",
+                resposta.len()
+            );
+            sock.write_all(corpo.as_bytes()).await.unwrap();
+            buf
+        });
+        (addr, handle)
+    }
+
+    #[tokio::test]
+    async fn list_models_reads_the_ids_in_order() {
+        let (addr, pedido) = fake_server(
+            r#"{"object":"list","data":[{"id":"llama-3.3-70b-versatile"},{"id":"openai/gpt-oss-120b"}]}"#,
+        )
+        .await;
+        let ids = list_models(&format!("http://{addr}/v1"), Some("chave")).await.unwrap();
+        assert_eq!(ids, vec!["llama-3.3-70b-versatile", "openai/gpt-oss-120b"]);
+        let pedido = String::from_utf8_lossy(&pedido.await.unwrap()).to_string();
+        assert!(pedido.starts_with("GET /v1/models"), "{pedido}");
+        assert!(pedido.to_lowercase().contains("authorization: bearer chave"));
+    }
+
+    #[tokio::test]
+    async fn list_models_rejects_a_response_without_data() {
+        let (addr, _) = fake_server(r#"{"erro":"sem data"}"#).await;
+        assert!(list_models(&format!("http://{addr}/v1"), None).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn probe_model_returns_the_reply_and_measures_time() {
+        let (addr, pedido) = fake_server(
+            r#"{"choices":[{"message":{"role":"assistant","content":"ok"}}]}"#,
+        )
+        .await;
+        let (texto, duracao) = probe_model(&format!("http://{addr}/v1"), None, "algum-modelo")
+            .await
+            .unwrap();
+        assert_eq!(texto, "ok");
+        assert!(duracao.as_millis() < 5_000);
+        let pedido = String::from_utf8_lossy(&pedido.await.unwrap()).to_string();
+        assert!(pedido.contains(r#""model":"algum-modelo""#), "{pedido}");
+        assert!(pedido.contains(r#""content":".""#), "{pedido}");
     }
 
     #[test]

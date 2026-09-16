@@ -1,6 +1,34 @@
 # Empacotamento e Distribuição
 
-> **Nota:** este documento é do desenho inicial do projeto (fase 1–2) e não foi atualizado — várias partes já mudaram (TUI, app desktop, `/provedor`, o revisor de decisões). Veja o [README](../README.md) para o estado atual e o `TRAVAMENTOS.md` para decisões e armadilhas registradas ao longo do caminho.
+> **Nota:** este documento é do desenho inicial do projeto (fase 1–2) e não foi atualizado — várias partes já mudaram (TUI, app desktop, `/provedor`, o revisor de decisões). Veja o [README](../README.md) para o estado atual e o `TRAVAMENTOS.md` para decisões e armadilhas registradas ao longo do caminho. O resto deste arquivo é o plano ORIGINAL (histórico); como o empacotamento é feito DE VERDADE hoje está aqui embaixo:
+
+## Como é feito hoje (Linux)
+
+Cinco binários: `orchestrator` (TUI — sozinho, sem subcomando, já abre a
+interface, como `claude`), `orchestrator-desktop` (o app), `orchestrator-hook`
+e `orchestrator-mcp` (a trava, instalados por projeto) e `orchestrator-memoryd`
+(memória semântica, embute a página HTML dela).
+
+- **`scripts/instalar-dependencias.sh`** — verifica, instala (`--instalar`) ou
+  atualiza (`--atualizar`) o Rust, o Node.js e as bibliotecas do WebKitGTK/Tauri
+  que o app desktop precisa; `--provedores` também instala as CLIs de IA
+  opcionais (Codex, Kimi, Antigravity, OpenCode).
+- **`scripts/empacotar-linux.sh`** — AppImage, `.deb` e `.rpm` via `tauri build`
+  (é o que roda no CI, `.github/workflows/desktop.yml`).
+- **`scripts/empacotar-portatil-linux.sh`** — uma pasta/tarball com os cinco
+  binários prontos + `rodar.sh` + `instalar-dependencias.sh`, sem instalar nada
+  e sem precisar de FUSE (o AppImage precisa) — útil em container/sandbox.
+- **`scripts/rodar.sh`** — o lançador da versão portátil: abre o app com tela
+  gráfica disponível, a TUI sem, ou o que `--tui`/`--app` mandar.
+
+**Windows**: ainda não — bloqueios concretos (socket Unix, `killpg` POSIX,
+ChromaDB via podman) documentados no job `windows` de
+`.github/workflows/desktop.yml`. Fica para uma próxima etapa, para não sair
+uma versão quebrada.
+
+--------------------------------------------------------------------------------
+
+## Plano original (histórico, fase 1–2)
 
 Binários alvo: `orchestrator` (CLI), `orchestrator-service` (serviço de fundo), `orchestrator-hook`, e futuramente `orchestrator-mcp`.
 
