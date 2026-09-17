@@ -195,7 +195,17 @@ pub struct Engine {
     pub store: MemoryStore,
     // --- workbench ---
     pub chat: ChatState,
+    /// As workspaces do projeto ATIVO agora — CLIs abertas, terminais,
+    /// agentes. Trocar de projeto arquiva este vetor inteiro em
+    /// `workspaces_by_project` (pelo nome do projeto que está saindo) e traz
+    /// de volta o do projeto novo, ou cria vazio se for a primeira vez nele.
+    /// Sem isso, os cards de um projeto continuavam visíveis e comandáveis
+    /// depois de trocar para outro — misturava CLI de projeto errado.
     pub workspaces: Vec<Workspace>,
+    /// Workspaces dos OUTROS projetos, arquivadas enquanto eles não estão
+    /// ativos. Os processos (PTY, threads dos agentes) continuam vivos —
+    /// só saem da tela; voltam do jeito que ficaram ao trocar de volta.
+    workspaces_by_project: std::collections::HashMap<String, Vec<Workspace>>,
     pub ws_idx: usize,
     pub term_counter: usize,
     pub agent_counter: usize,
@@ -288,6 +298,7 @@ impl Engine {
             store,
             chat: ChatState::new(providers[0].clone()),
             workspaces: (0..WS_COUNT).map(|_| Workspace::default()).collect(),
+            workspaces_by_project: std::collections::HashMap::new(),
             ws_idx: 0,
             term_counter: 0,
             agent_counter: 0,
@@ -646,10 +657,13 @@ impl Engine {
         );
     }
 
-    /// Troca o projeto ativo (`/projeto [nome]`; sem nome, cicla) e
-    /// recarrega a conversa persistida daquele projeto.
+    /// Troca o projeto ativo (`/projeto [nome]`; sem nome, cicla) — leva a
+    /// conversa persistida do projeto novo, e NENHUM card do projeto
+    /// anterior fica visível ou comandável: as workspaces dele são
+    /// arquivadas (os processos continuam rodando) e voltam intactas
+    /// quando você trocar de volta para ele.
     pub fn switch_project(&mut self, name: Option<&str>) {
-        match name {
+        let novo_idx = match name {
             Some(n) if !n.trim().is_empty() => {
                 let n = n.trim();
                 match self
@@ -657,7 +671,7 @@ impl Engine {
                     .iter()
                     .position(|p| p.eq_ignore_ascii_case(n))
                 {
-                    Some(i) => self.project_idx = i,
+                    Some(i) => i,
                     None => {
                         self.status = format!(
                             "projeto \"{n}\" não existe — conhecidos: {}",
@@ -667,9 +681,39 @@ impl Engine {
                     }
                 }
             }
-            _ => self.project_idx = (self.project_idx + 1) % self.projects.len(),
+            _ => (self.project_idx + 1) % self.projects.len(),
+        };
+        if novo_idx == self.project_idx {
+            return;
         }
-        self.restore_chat();
+        self.persist_chat();
+        // O chat ativo é um campo à parte (não mora em `workspaces[ws_idx]`
+        // enquanto está em uso — só o das OUTRAS workspaces fica lá, ver
+        // `switch_workspace`). Guarda-o na própria workspace antes de
+        // arquivar o vetor inteiro, senão ele se perderia na troca.
+        let provedor = self.chat.provider.clone();
+        let ws_idx = self.ws_idx;
+        self.workspaces[ws_idx].chat =
+            Some(std::mem::replace(&mut self.chat, ChatState::new(provedor.clone())));
+        let projeto_velho = self.projects[self.project_idx].clone();
+        let arquivado = std::mem::take(&mut self.workspaces);
+        self.workspaces_by_project.insert(projeto_velho, arquivado);
+
+        self.project_idx = novo_idx;
+        let projeto_novo = self.projects[novo_idx].clone();
+        self.workspaces = self
+            .workspaces_by_project
+            .remove(&projeto_novo)
+            .unwrap_or_else(|| (0..WS_COUNT).map(|_| Workspace::default()).collect());
+        self.ws_idx = 0;
+
+        self.chat = self.workspaces[0].chat.take().unwrap_or_else(|| ChatState::new(provedor));
+        // Chat novo (primeira vez nesta workspace deste projeto): carrega a
+        // conversa persistida — mesmo caminho de `switch_workspace`.
+        if self.chat.transcript.is_empty() {
+            self.restore_chat();
+        }
+        self.seen_decisions.clear();
         self.reload();
         self.status = format!(
             "projeto ativo: {} ({})",
@@ -2729,6 +2773,40 @@ mod tests {
         assert_eq!(interpret_answer(&q, "use o b com cache"), "use o b com cache");
         q.multiple = false;
         assert_eq!(interpret_answer(&q, "1 2"), "1 2", "escolha única não aceita duas");
+    }
+
+    #[test]
+    fn switching_project_hides_the_other_projects_cards_without_killing_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = engine_em(dir.path());
+        let outro_dir = tempfile::tempdir().unwrap();
+        e.projects.push("outro".into());
+        e.project_paths.push(outro_dir.path().to_path_buf());
+        e.project_goals.push(String::new());
+
+        assert_eq!(e.run_command("/cli terminal sh"), CommandOutcome::Done);
+        assert_eq!(e.workspaces[0].panes.len(), 1, "{}", e.status);
+        e.chat.push_line("você", "mensagem só do projeto nucleo");
+
+        e.switch_project(Some("outro"));
+        assert_eq!(e.project(), "outro");
+        assert!(e.workspaces[0].panes.is_empty(), "workspace do projeto novo deveria nascer vazia");
+        assert!(
+            !e.chat.transcript.iter().any(|l| l.text.contains("mensagem só do projeto nucleo")),
+            "não pode ver o chat do outro projeto"
+        );
+
+        e.switch_project(Some("nucleo"));
+        assert_eq!(e.project(), "nucleo");
+        assert_eq!(e.workspaces[0].panes.len(), 1, "a CLI deveria voltar do jeito que ficou");
+        assert!(
+            e.chat.transcript.iter().any(|l| l.text.contains("mensagem só do projeto nucleo")),
+            "a conversa do projeto deveria voltar"
+        );
+
+        // Mesmo projeto: não faz nada (nem zera a workspace à toa).
+        e.switch_project(Some("nucleo"));
+        assert_eq!(e.workspaces[0].panes.len(), 1);
     }
 
     #[test]
