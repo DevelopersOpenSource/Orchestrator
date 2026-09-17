@@ -21,10 +21,19 @@ echo "==> dependências da interface e a página da memória (embutida no memory
 (cd web && npm ci --no-audit --no-fund)
 (cd web && npm run build:memory)
 
-echo "==> binários (release)"
+echo "==> app desktop (via tauri build — NUNCA cargo build direto)"
+# `cargo build --release -p orchestrator-desktop` sozinho produz um binário
+# que tenta abrir o servidor de desenvolvimento (`devUrl` do tauri.conf.json)
+# em vez da interface embutida — mesmo com `web/apps/desktop/dist/` fresco.
+# Só o `tauri build` (via a CLI, que passa as variáveis de ambiente certas
+# para o build.rs decidir modo produção) embute o app do jeito que roda sem
+# precisar de nada escutando em localhost:5179. Visto na prática: o app
+# abria e dava "Connection refused" na hora, mesmo com o dist/ atualizado.
+(cd web/apps/desktop && npx tauri build --no-bundle)
+
+echo "==> os outros binários (release)"
 cargo build --release \
-  -p orchestrator-cli -p orchestrator-desktop \
-  -p orchestrator-mcp-server -p orchestrator-memoryd
+  -p orchestrator-cli -p orchestrator-mcp-server -p orchestrator-memoryd
 
 echo "==> montando $destino"
 rm -rf "$destino"
