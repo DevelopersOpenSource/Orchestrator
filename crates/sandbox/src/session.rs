@@ -141,6 +141,23 @@ impl Session {
         Ok(path)
     }
 
+    /// Salva um PNG da tela SEMPRE no mesmo caminho (sobrescreve).
+    ///
+    /// É a "tela virtual" ao vivo: uma captura periódica em segundo plano
+    /// não pode ir empilhando arquivo novo a cada 1.5s, então aqui não há
+    /// contador — o chamador decide o caminho fixo (normalmente fora de
+    /// `shots_dir`, para não se confundir com os screenshots pedidos pelo
+    /// orquestrador via `ui_screenshot`).
+    pub fn screenshot_to(&mut self, path: &Path) -> Result<()> {
+        let cdp = self.cdp()?;
+        let b64 = cdp.screenshot()?;
+        let bytes = decode_base64(&b64).context("imagem do navegador ilegível")?;
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, bytes).with_context(|| format!("gravando {}", tmp.display()))?;
+        std::fs::rename(&tmp, path).with_context(|| format!("publicando {}", path.display()))?;
+        Ok(())
+    }
+
     /// Roda um comando dentro da sandbox (testar binário, AppImage, script).
     pub fn exec(&mut self, argv: &[String]) -> Result<String> {
         let (out, ok) = container::exec(&self.sandbox.name, argv)?;

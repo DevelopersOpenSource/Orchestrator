@@ -164,6 +164,11 @@ mockIPC(async (cmd, args) => {
       foto.testeModelo = resultado;
       return null;
     }
+    case "tela_viva":
+      // Sem container de verdade no demo: simula uma sandbox chamada "demo".
+      return String(a.nome) === "demo"
+        ? "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        : null;
     case "paleta":
       return paleta.filter((p) => p.nome.startsWith(String(a.texto ?? "/").split(" ")[0] || "/"));
     case "memoria_api":

@@ -3945,6 +3945,7 @@ name = "orchestrator-mcp-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "orchestrator-core",
  "orchestrator-memory",
  "orchestrator-notify",

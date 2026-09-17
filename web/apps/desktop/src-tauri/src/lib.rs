@@ -392,6 +392,55 @@ fn testar_modelo(nucleo: State<'_, Nucleo>, modelo: String) -> Result<(), String
     Ok(())
 }
 
+/// A tela virtual (viva) de uma sandbox aberta pelo orquestrador, como
+/// `data:` URL — pronta para um `<img src>`. `None` sem sandbox aberta com
+/// esse nome, ou sem foto ainda (primeiro segundo depois do `ui_open`).
+#[tauri::command]
+fn tela_viva(nucleo: State<'_, Nucleo>, nome: String) -> Result<Option<String>, String> {
+    let (caminho, em) = {
+        let e = travar(&nucleo)?;
+        match e.sandbox_live(&nome) {
+            Some(v) => v,
+            None => return Ok(None),
+        }
+    };
+    let bytes = match std::fs::read(&caminho) {
+        Ok(b) => b,
+        // A thread de captura pode estar no meio de um rename() atômico —
+        // a próxima volta do app (1.5s) tenta de novo.
+        Err(_) => return Ok(None),
+    };
+    let _ = em;
+    Ok(Some(format!("data:image/png;base64,{}", base64_encode(&bytes))))
+}
+
+/// Codifica base64 sem puxar dependência nova — o mesmo espírito de
+/// `orchestrator_sandbox::session::decode_base64`, só que no sentido
+/// inverso.
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABELA: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        out.push(TABELA[(b0 >> 2) as usize] as char);
+        out.push(TABELA[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            TABELA[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABELA[(b2 & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
 #[tauri::command]
 fn trocar_workspace(nucleo: State<'_, Nucleo>, indice: usize) -> Result<(), String> {
     travar(&nucleo)?.switch_workspace(indice);
@@ -607,6 +656,7 @@ pub fn run() {
             escolher_provedor,
             sincronizar_modelos,
             testar_modelo,
+            tela_viva,
             trocar_workspace,
             focar_card,
             fechar_card,

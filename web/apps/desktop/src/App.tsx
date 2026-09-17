@@ -7,8 +7,9 @@ import { Modelos } from "./componentes/Modelos";
 import { Decisoes } from "./componentes/Decisoes";
 import { Manual } from "./componentes/Manual";
 import { Memoria } from "./componentes/Memoria";
+import { Sandbox } from "./componentes/Sandbox";
 
-type Vista = "workbench" | "decisoes";
+type Vista = "workbench" | "decisoes" | "sandbox";
 
 const ESTADO: Record<Card["estado"], [string, string]> = {
   iniciando: ["○", "iniciando"],
@@ -207,6 +208,13 @@ export function App() {
           <button className="botao" onClick={() => setMemoria(true)} title="Memória (F4)">
             Memória
           </button>
+          <button
+            className="botao"
+            onClick={() => setVista(vista === "sandbox" ? "workbench" : "sandbox")}
+            title="Tela virtual: o que a sandbox de teste está mostrando"
+          >
+            Tela virtual
+          </button>
           <button className="botao botao-icone" onClick={() => setManual(true)} title="Manual (F1)" aria-label="Manual">
             ?
           </button>
@@ -248,6 +256,8 @@ export function App() {
             aoResponder={(id, resposta) => void nucleo.responderPergunta(id, resposta)}
             voltar={() => setVista("workbench")}
           />
+        ) : vista === "sandbox" ? (
+          <Sandbox voltar={() => setVista("workbench")} />
         ) : (
           <>
             {chatVisivel && (

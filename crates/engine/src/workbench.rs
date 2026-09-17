@@ -1496,6 +1496,30 @@ impl Engine {
         out
     }
 
+    /// A "tela virtual" ao vivo de uma sandbox aberta pelo orquestrador
+    /// (`ui_open`/`ui_exec` no `orchestrator-mcp`): caminho do PNG mais
+    /// recente e quando foi tirado. `None` sem sandbox aberta com esse nome
+    /// — a thread de captura escreve isto no `ui_state`, e some de lá
+    /// quando a sandbox é encerrada (`ui_stop`).
+    ///
+    /// A sandbox roda no PROCESSO do `orchestrator-mcp`, separado do app e
+    /// da TUI — por isso a ponte é o banco compartilhado, não uma chamada
+    /// direta.
+    pub fn sandbox_live(&self, name: &str) -> Option<(PathBuf, String)> {
+        let chave = sandbox_sanitize(name);
+        let caminho = self
+            .store
+            .ui_get(&format!("sandbox.{chave}.tela_viva"))
+            .ok()??;
+        let em = self
+            .store
+            .ui_get(&format!("sandbox.{chave}.tela_viva_em"))
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        Some((PathBuf::from(caminho), em))
+    }
+
     /// A lista de modelos do provedor ativo está sendo buscada agora?
     pub fn models_loading(&self) -> bool {
         self.models_loading.as_deref() == Some(self.chat.provider.name.as_str())
@@ -2581,6 +2605,24 @@ pub const LEGACY_PROVIDER: &str = "Claude Code (CLI)";
 
 /// Onde fica o provedor escolhido por último.
 pub const CHAT_PROVIDER_KEY: &str = "chat.provider";
+
+/// Mesma sanitização de `orchestrator_sandbox::container::sanitize` — não
+/// dá para depender do crate `sandbox` só por causa disto (ele puxa
+/// `tungstenite`/`url` à toa aqui), então é reduzido e mantido em sincronia
+/// à mão: nome de sandbox vira chave de `ui_state` do jeito que o
+/// `orchestrator-mcp` grava.
+fn sandbox_sanitize(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let trimmed = cleaned.trim_matches('-').to_lowercase();
+    if trimmed.is_empty() {
+        "sandbox".to_string()
+    } else {
+        trimmed.chars().take(40).collect()
+    }
+}
 
 /// Sessão do chat por projeto, workspace e provedor: a sessão de uma
 /// ferramenta não abre na outra.

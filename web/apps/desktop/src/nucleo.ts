@@ -107,6 +107,9 @@ export const nucleo = {
   escolherProvedor: (nome: string) => invoke<string>("escolher_provedor", { nome }),
   sincronizarModelos: () => invoke<void>("sincronizar_modelos"),
   testarModelo: (modelo: string) => invoke<void>("testar_modelo", { modelo }),
+  /** A tela virtual ao vivo de uma sandbox aberta pelo orquestrador (`ui_open`),
+   * como `data:` URL — `null` sem sandbox aberta com esse nome, ou sem foto ainda. */
+  telaViva: (nome: string) => invoke<string | null>("tela_viva", { nome }),
   trocarWorkspace: (indice: number) => invoke<void>("trocar_workspace", { indice }),
   focarCard: (indice: number) => invoke<void>("focar_card", { indice }),
   fecharCard: (indice: number) => invoke<void>("fechar_card", { indice }),

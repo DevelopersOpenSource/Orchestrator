@@ -39,6 +39,81 @@ fn shots_dir() -> PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join("orchestrator-shots"))
 }
 
+/// Onde a "tela virtual" (captura contínua, um arquivo por sandbox) fica.
+/// Separada de `shots_dir()` para não se misturar com os screenshots que o
+/// orquestrador pede um a um via `ui_screenshot`.
+fn live_dir() -> PathBuf {
+    shots_dir().join("live")
+}
+
+/// Um sinalizador "continue capturando" por sandbox — a thread de captura o
+/// olha a cada volta; `ui_stop` desliga e a thread sai sozinha, sem precisar
+/// derrubar nada à força.
+fn live_flags() -> &'static Mutex<HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>> {
+    static F: OnceLock<Mutex<HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>> =
+        OnceLock::new();
+    F.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Sobe a thread de captura da "tela virtual" de uma sandbox recém-criada.
+///
+/// Cada volta tira uma foto (sobrescrevendo sempre o mesmo arquivo, ver
+/// `Session::screenshot_to`) e grava o caminho + hora no `ui_state` — a
+/// mesma tabela que o `Engine` já lê para tudo o mais (sessão de chat,
+/// pasta de cada workspace...), então o app só precisa de mais um
+/// `ui_get`. Falha de captura (página ainda não aberta, navegador ainda de
+/// pé subindo) é normal no começo e não derruba a thread.
+fn iniciar_tela_viva(chave: String) {
+    let ligado = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    live_flags()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(chave.clone(), ligado.clone());
+    let db_path = std::env::var_os("ORCHESTRATOR_DB").map(PathBuf::from);
+    std::thread::spawn(move || {
+        let store = match crate::open_store(db_path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let dir = live_dir();
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let path = dir.join(format!("{chave}.png"));
+        use std::sync::atomic::Ordering;
+        while ligado.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            if !ligado.load(Ordering::Relaxed) {
+                break;
+            }
+            let mut map = match sessions().lock() {
+                Ok(m) => m,
+                Err(_) => break,
+            };
+            let Some(session) = map.get_mut(&chave) else {
+                break;
+            };
+            if session.screenshot_to(&path).is_ok() {
+                let _ = store.ui_set(&format!("sandbox.{chave}.tela_viva"), &path.display().to_string());
+                let _ = store.ui_set(
+                    &format!("sandbox.{chave}.tela_viva_em"),
+                    &chrono::Utc::now().to_rfc3339(),
+                );
+            }
+        }
+        let _ = store.ui_delete(&format!("sandbox.{chave}.tela_viva"));
+    });
+}
+
+/// Desliga a captura da "tela virtual" de uma sandbox (chamado por
+/// `ui_stop`, antes de derrubar o container — a thread nota no próximo
+/// laço, no máximo 1.5s depois, e sai sozinha).
+fn parar_tela_viva(chave: &str) {
+    if let Some(f) = live_flags().lock().unwrap_or_else(|e| e.into_inner()).remove(chave) {
+        f.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// Descritores das tools de sandbox para o `tools/list`.
 pub fn tool_descriptors() -> Vec<Value> {
     vec![
@@ -201,6 +276,7 @@ pub fn call(name: &str, args: &Value) -> Result<String, (i64, String)> {
                 let session = Session::start(&spec, &shots_dir()).map_err(err)?;
                 aviso = Some(session.resumo());
                 map.insert(k.clone(), session);
+                iniciar_tela_viva(k.clone());
             }
             let session = map.get_mut(&k).expect("inserida acima");
             let alerta = alerta_de_escrita_real(&session.sandbox);
@@ -262,8 +338,10 @@ pub fn call(name: &str, args: &Value) -> Result<String, (i64, String)> {
         }
         "ui_stop" => match args.get("name").and_then(Value::as_str) {
             Some(sandbox) => {
+                let k = chave(sandbox);
+                parar_tela_viva(&k);
                 let mut map = sessions().lock().map_err(|_| lock_err())?;
-                let estava = match map.remove(&chave(sandbox)) {
+                let estava = match map.remove(&k) {
                     Some(mut s) => s.stop().map_err(err)?,
                     // Pode ter sobrado de outra execução do MCP.
                     None => container::stop(sandbox).map_err(err)?,
