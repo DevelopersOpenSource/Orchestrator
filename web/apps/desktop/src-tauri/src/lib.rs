@@ -441,6 +441,99 @@ fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
+// -------------------------------------------------------------------- IDE
+
+/// Pastas que nunca valem a pena mostrar na árvore — build cheio de gente
+/// gerada e nunca é o que o dono quer editar, só deixa a árvore lenta e
+/// poluída.
+const IDE_IGNORAR: &[&str] = &[
+    "node_modules", "target", "dist", ".git", "__pycache__", ".venv", "venv",
+];
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct EntradaArquivo {
+    nome: String,
+    /// Caminho relativo à raiz do projeto — é o que volta em `ide_ler`/`ide_salvar`.
+    caminho: String,
+    pasta: bool,
+}
+
+/// A raiz do projeto ativo, canônica — toda operação do IDE é confinada a
+/// ela (nunca lê/escreve fora do projeto que o dono está vendo).
+fn raiz_projeto(nucleo: &State<'_, Nucleo>) -> Result<std::path::PathBuf, String> {
+    let e = travar(nucleo)?;
+    e.project_path().canonicalize().map_err(|err| err.to_string())
+}
+
+/// Resolve um caminho relativo dentro da raiz do projeto, recusando
+/// qualquer coisa que escape dela (`..`, symlink apontando para fora) — o
+/// IDE é do projeto, não do sistema de arquivos inteiro.
+fn resolver_no_projeto(raiz: &std::path::Path, relativo: &str) -> Result<std::path::PathBuf, String> {
+    let alvo = raiz.join(relativo);
+    let canon = if alvo.exists() {
+        alvo.canonicalize().map_err(|e| e.to_string())?
+    } else {
+        // Arquivo novo: canonicaliza o pai (que já existe) e reanexa o nome.
+        let pai = alvo.parent().ok_or("caminho inválido")?;
+        let nome = alvo.file_name().ok_or("caminho inválido")?;
+        pai.canonicalize().map_err(|e| e.to_string())?.join(nome)
+    };
+    if !canon.starts_with(raiz) {
+        return Err("fora da pasta do projeto".into());
+    }
+    Ok(canon)
+}
+
+/// A árvore de arquivos do projeto ativo, rasa (uma pasta por vez — quem
+/// pede é a lateral do IDE, que expande sob demanda).
+#[tauri::command]
+fn ide_listar(nucleo: State<'_, Nucleo>, pasta: String) -> Result<Vec<EntradaArquivo>, String> {
+    let raiz = raiz_projeto(&nucleo)?;
+    let alvo = if pasta.trim().is_empty() { raiz.clone() } else { resolver_no_projeto(&raiz, &pasta)? };
+    let mut entradas = Vec::new();
+    let ler = std::fs::read_dir(&alvo).map_err(|e| e.to_string())?;
+    for item in ler.flatten() {
+        let nome = item.file_name().to_string_lossy().to_string();
+        if nome.starts_with('.') && nome != ".env" || IDE_IGNORAR.contains(&nome.as_str()) {
+            continue;
+        }
+        let Ok(tipo) = item.file_type() else { continue };
+        let caminho_abs = item.path();
+        let Ok(relativo) = caminho_abs.strip_prefix(&raiz) else { continue };
+        entradas.push(EntradaArquivo {
+            nome,
+            caminho: relativo.to_string_lossy().replace('\\', "/"),
+            pasta: tipo.is_dir(),
+        });
+    }
+    entradas.sort_by(|a, b| b.pasta.cmp(&a.pasta).then(a.nome.to_lowercase().cmp(&b.nome.to_lowercase())));
+    Ok(entradas)
+}
+
+/// Tamanho além do qual o IDE se recusa a abrir — texto maior que isso
+/// quase sempre é gerado/binário, e travaria o editor no navegador.
+const IDE_TAMANHO_MAX: u64 = 4 * 1024 * 1024;
+
+#[tauri::command]
+fn ide_ler(nucleo: State<'_, Nucleo>, caminho: String) -> Result<String, String> {
+    let raiz = raiz_projeto(&nucleo)?;
+    let alvo = resolver_no_projeto(&raiz, &caminho)?;
+    let meta = std::fs::metadata(&alvo).map_err(|e| e.to_string())?;
+    if meta.len() > IDE_TAMANHO_MAX {
+        return Err("arquivo grande demais para abrir no IDE".into());
+    }
+    let bytes = std::fs::read(&alvo).map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|_| "não é um arquivo de texto (provavelmente binário)".into())
+}
+
+#[tauri::command]
+fn ide_salvar(nucleo: State<'_, Nucleo>, caminho: String, conteudo: String) -> Result<(), String> {
+    let raiz = raiz_projeto(&nucleo)?;
+    let alvo = resolver_no_projeto(&raiz, &caminho)?;
+    std::fs::write(&alvo, conteudo).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn trocar_workspace(nucleo: State<'_, Nucleo>, indice: usize) -> Result<(), String> {
     travar(&nucleo)?.switch_workspace(indice);
@@ -657,6 +750,9 @@ pub fn run() {
             sincronizar_modelos,
             testar_modelo,
             tela_viva,
+            ide_listar,
+            ide_ler,
+            ide_salvar,
             trocar_workspace,
             focar_card,
             fechar_card,

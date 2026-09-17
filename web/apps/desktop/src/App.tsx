@@ -8,8 +8,9 @@ import { Decisoes } from "./componentes/Decisoes";
 import { Manual } from "./componentes/Manual";
 import { Memoria } from "./componentes/Memoria";
 import { Sandbox } from "./componentes/Sandbox";
+import { Ide } from "./componentes/Ide";
 
-type Vista = "workbench" | "decisoes" | "sandbox";
+type Vista = "workbench" | "decisoes" | "sandbox" | "ide";
 
 const ESTADO: Record<Card["estado"], [string, string]> = {
   iniciando: ["○", "iniciando"],
@@ -215,6 +216,9 @@ export function App() {
           >
             Tela virtual
           </button>
+          <button className="botao" onClick={() => setVista(vista === "ide" ? "workbench" : "ide")} title="IDE do projeto">
+            IDE
+          </button>
           <button className="botao botao-icone" onClick={() => setManual(true)} title="Manual (F1)" aria-label="Manual">
             ?
           </button>
@@ -258,6 +262,8 @@ export function App() {
           />
         ) : vista === "sandbox" ? (
           <Sandbox voltar={() => setVista("workbench")} />
+        ) : vista === "ide" ? (
+          <Ide voltar={() => setVista("workbench")} />
         ) : (
           <>
             {chatVisivel && (

@@ -77,6 +77,13 @@ export interface Foto {
   testeModelo: TesteModelo | null;
 }
 
+export interface EntradaArquivo {
+  nome: string;
+  /** Relativo à raiz do projeto — é o que volta para `ideLer`/`ideSalvar`. */
+  caminho: string;
+  pasta: boolean;
+}
+
 export interface ItemPaleta {
   nome: string;
   uso: string;
@@ -110,6 +117,10 @@ export const nucleo = {
   /** A tela virtual ao vivo de uma sandbox aberta pelo orquestrador (`ui_open`),
    * como `data:` URL — `null` sem sandbox aberta com esse nome, ou sem foto ainda. */
   telaViva: (nome: string) => invoke<string | null>("tela_viva", { nome }),
+  /** Uma pasta do projeto ativo (raso — expande sob demanda). `""` é a raiz. */
+  ideListar: (pasta: string) => invoke<EntradaArquivo[]>("ide_listar", { pasta }),
+  ideLer: (caminho: string) => invoke<string>("ide_ler", { caminho }),
+  ideSalvar: (caminho: string, conteudo: string) => invoke<void>("ide_salvar", { caminho, conteudo }),
   trocarWorkspace: (indice: number) => invoke<void>("trocar_workspace", { indice }),
   focarCard: (indice: number) => invoke<void>("focar_card", { indice }),
   fecharCard: (indice: number) => invoke<void>("fechar_card", { indice }),

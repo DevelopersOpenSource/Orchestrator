@@ -164,6 +164,27 @@ mockIPC(async (cmd, args) => {
       foto.testeModelo = resultado;
       return null;
     }
+    case "ide_listar": {
+      const pasta = String(a.pasta ?? "");
+      const raiz = [
+        { nome: "src", caminho: "src", pasta: true },
+        { nome: "README.md", caminho: "README.md", pasta: false },
+        { nome: "Cargo.toml", caminho: "Cargo.toml", pasta: false },
+      ];
+      const src = [
+        { nome: "main.rs", caminho: "src/main.rs", pasta: false },
+        { nome: "lib.rs", caminho: "src/lib.rs", pasta: false },
+      ];
+      return pasta === "" ? raiz : pasta === "src" ? src : [];
+    }
+    case "ide_ler": {
+      const caminho = String(a.caminho ?? "");
+      if (caminho === "README.md") return "# Demo\n\nEste é o modo de demonstração do Orchestrator — sem projeto real por trás.\n";
+      if (caminho === "Cargo.toml") return '[package]\nname = "demo"\nversion = "0.1.0"\n';
+      return `// ${caminho}\nfn main() {\n    println!(\"oi\");\n}\n`;
+    }
+    case "ide_salvar":
+      return null;
     case "tela_viva":
       // Sem container de verdade no demo: simula uma sandbox chamada "demo".
       return String(a.nome) === "demo"

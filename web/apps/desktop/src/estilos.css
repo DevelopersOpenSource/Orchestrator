@@ -208,6 +208,20 @@ button.chip:hover { color: var(--tx); border-color: var(--tx3); }
 .sandbox-tela { flex: 1; display: flex; align-items: center; justify-content: center; border: 1px solid var(--bd2); border-radius: 10px; background: var(--s1); min-height: 320px; overflow: hidden; }
 .sandbox-tela img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 
+.ide-vista { flex: 1; overflow: hidden; padding: 24px 32px; display: flex; flex-direction: column; min-height: 0; }
+.ide-acoes-topo { display: flex; gap: 8px; }
+.ide-corpo { flex: 1; display: flex; gap: 12px; min-height: 0; margin-top: 4px; }
+.ide-arvore { width: 240px; flex-shrink: 0; overflow-y: auto; border: 1px solid var(--bd2); border-radius: 10px; background: var(--s1); padding: 8px; }
+.ide-lista { list-style: none; margin: 0; padding: 0; }
+.ide-filhos { margin-left: 14px; }
+.ide-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--tx2); padding: 3px 6px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ide-item:hover { background: var(--s2); color: var(--tx); }
+.ide-item-ativo { background: var(--s2); color: var(--tx); font-weight: 600; }
+.ide-editor { flex: 1; min-width: 0; border: 1px solid var(--bd2); border-radius: 10px; overflow: hidden; background: var(--s1); display: flex; }
+.ide-editor .vazio { margin: auto; }
+.ide-cm { flex: 1; min-width: 0; overflow: auto; }
+.ide-cm .cm-editor { height: 100%; }
+
 @media (max-width: 1200px) {
   .chat { width: 320px; }
   .lateral { width: 188px; }
