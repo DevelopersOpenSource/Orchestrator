@@ -17,11 +17,15 @@ use orchestrator_sandbox::view::Detail;
 use orchestrator_sandbox::Session;
 use serde_json::{json, Value};
 
-/// Chave de uma sandbox no mapa de sessões.
+/// Chave de uma sandbox no mapa de sessões deste PROCESSO.
 ///
 /// É o nome do container, não o nome cru: "verificação" e "verificacao"
 /// viram o MESMO container, e duas sessões apontando para ele davam um
-/// `ui_stop` que matava o container da outra.
+/// `ui_stop` que matava o container da outra. O isolamento entre projetos
+/// (dois processos diferentes escolhendo o mesmo nome) é feito uma camada
+/// abaixo, em `container::container_name` — aqui o nome fica cru porque é
+/// ele que volta nas respostas para o orquestrador (`Session.resumo()`
+/// etc.); prefixar aqui também faria esse texto vazar o prefixo.
 fn chave(name: &str) -> String {
     container::sanitize(name)
 }
@@ -70,6 +74,16 @@ fn iniciar_tela_viva(chave: String) {
         .unwrap_or_else(|e| e.into_inner())
         .insert(chave.clone(), ligado.clone());
     let db_path = std::env::var_os("ORCHESTRATOR_DB").map(PathBuf::from);
+    // `ui_state` e `live_dir()` são compartilhados por TODOS os projetos (é
+    // um banco/pasta só na máquina) — sem prefixar pelo projeto, duas
+    // sandboxes de projetos diferentes com o mesmo nome ("teste") pisariam
+    // na MESMA chave e no MESMO arquivo de captura.
+    let projeto = std::env::var("ORCHESTRATOR_PROJECT").unwrap_or_default();
+    let chave_global = if projeto.trim().is_empty() {
+        chave.clone()
+    } else {
+        format!("{}.{chave}", container::sanitize(&projeto))
+    };
     std::thread::spawn(move || {
         let store = match crate::open_store(db_path) {
             Ok(s) => s,
@@ -79,7 +93,7 @@ fn iniciar_tela_viva(chave: String) {
         if std::fs::create_dir_all(&dir).is_err() {
             return;
         }
-        let path = dir.join(format!("{chave}.png"));
+        let path = dir.join(format!("{chave_global}.png"));
         use std::sync::atomic::Ordering;
         while ligado.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(1500));
@@ -94,14 +108,14 @@ fn iniciar_tela_viva(chave: String) {
                 break;
             };
             if session.screenshot_to(&path).is_ok() {
-                let _ = store.ui_set(&format!("sandbox.{chave}.tela_viva"), &path.display().to_string());
+                let _ = store.ui_set(&format!("sandbox.{chave_global}.tela_viva"), &path.display().to_string());
                 let _ = store.ui_set(
-                    &format!("sandbox.{chave}.tela_viva_em"),
+                    &format!("sandbox.{chave_global}.tela_viva_em"),
                     &chrono::Utc::now().to_rfc3339(),
                 );
             }
         }
-        let _ = store.ui_delete(&format!("sandbox.{chave}.tela_viva"));
+        let _ = store.ui_delete(&format!("sandbox.{chave_global}.tela_viva"));
     });
 }
 
@@ -353,7 +367,7 @@ pub fn call(name: &str, args: &Value) -> Result<String, (i64, String)> {
                 // encerrada" faria ele marcar a limpeza como feita enquanto a
                 // sandbox de verdade segue de pé — com navegador e, se for o
                 // caso, com a pasta do usuário montada.
-                let abertas = container::list().unwrap_or_default();
+                let abertas = abertas_do_projeto().unwrap_or_default();
                 Ok(if abertas.is_empty() {
                     format!("não há sandbox \"{sandbox}\" de pé, e nenhuma outra aberta")
                 } else {
@@ -364,7 +378,7 @@ pub fn call(name: &str, args: &Value) -> Result<String, (i64, String)> {
                 })
             }
             None => {
-                let abertas = container::list().map_err(err)?;
+                let abertas = abertas_do_projeto().map_err(err)?;
                 if abertas.is_empty() {
                     Ok("nenhuma sandbox aberta — ui_open cria uma".to_string())
                 } else {
@@ -374,6 +388,31 @@ pub fn call(name: &str, args: &Value) -> Result<String, (i64, String)> {
         },
         other => Err((-32602, format!("tool de sandbox desconhecida: {other}"))),
     }
+}
+
+/// As sandboxes de pé DESTE projeto (`ORCHESTRATOR_PROJECT`), com o nome já
+/// sem o prefixo — o mesmo nome cru que o orquestrador usaria de novo em
+/// `ui_snapshot`/`ui_stop`. `container::container_name` prefixa todo nome
+/// pelo projeto para não colidir no podman com o de outro projeto; sem
+/// filtrar e destrefixar aqui, esta listagem vazaria as sandboxes de OUTROS
+/// projetos e devolveria um nome que o orquestrador não reconheceria como
+/// seu.
+fn abertas_do_projeto() -> anyhow::Result<Vec<container::Aberta>> {
+    let todas = container::list()?;
+    let Ok(projeto) = std::env::var("ORCHESTRATOR_PROJECT") else {
+        return Ok(todas);
+    };
+    if projeto.trim().is_empty() {
+        return Ok(todas);
+    }
+    let prefixo = format!("{}-", container::sanitize(&projeto));
+    Ok(todas
+        .into_iter()
+        .filter_map(|mut a| {
+            a.name = a.name.strip_prefix(&prefixo)?.to_string();
+            Some(a)
+        })
+        .collect())
 }
 
 /// As sandboxes de pé, uma por linha, com pasta e modo.

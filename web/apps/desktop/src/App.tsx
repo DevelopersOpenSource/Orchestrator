@@ -261,9 +261,9 @@ export function App() {
             voltar={() => setVista("workbench")}
           />
         ) : vista === "sandbox" ? (
-          <Sandbox voltar={() => setVista("workbench")} />
+          <Sandbox key={foto.projeto} projeto={foto.projeto} voltar={() => setVista("workbench")} />
         ) : vista === "ide" ? (
-          <Ide voltar={() => setVista("workbench")} />
+          <Ide key={foto.projeto} projeto={foto.projeto} voltar={() => setVista("workbench")} />
         ) : (
           <>
             {chatVisivel && (

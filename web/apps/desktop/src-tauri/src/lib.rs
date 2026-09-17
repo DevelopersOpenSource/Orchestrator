@@ -462,8 +462,16 @@ struct EntradaArquivo {
 /// A raiz do projeto ativo, canônica — toda operação do IDE é confinada a
 /// ela (nunca lê/escreve fora do projeto que o dono está vendo).
 fn raiz_projeto(nucleo: &State<'_, Nucleo>) -> Result<std::path::PathBuf, String> {
-    let e = travar(nucleo)?;
-    e.project_path().canonicalize().map_err(|err| err.to_string())
+    let (projeto, caminho) = {
+        let e = travar(nucleo)?;
+        (e.project().to_string(), e.project_path())
+    };
+    caminho.canonicalize().map_err(|_| {
+        format!(
+            "a pasta do projeto \"{projeto}\" não existe mais ({}) — confira o caminho em /projeto",
+            caminho.display()
+        )
+    })
 }
 
 /// Resolve um caminho relativo dentro da raiz do projeto, recusando

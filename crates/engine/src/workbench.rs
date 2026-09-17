@@ -714,6 +714,13 @@ impl Engine {
             self.restore_chat();
         }
         self.seen_decisions.clear();
+        // Garante hook/MCP/regras do projeto novo IMEDIATAMENTE — antes só
+        // acontecia por acaso, na primeira mensagem de chat: uma CLI aberta
+        // (ou a sandbox pedida) logo depois de trocar, sem nunca ter
+        // conversado, corria sem trava nenhuma no projeto que acabou de
+        // entrar.
+        self.ensure_project_setup();
+        self.refresh_notices();
         self.reload();
         self.status = format!(
             "projeto ativo: {} ({})",
@@ -1506,7 +1513,11 @@ impl Engine {
     /// da TUI — por isso a ponte é o banco compartilhado, não uma chamada
     /// direta.
     pub fn sandbox_live(&self, name: &str) -> Option<(PathBuf, String)> {
-        let chave = sandbox_sanitize(name);
+        // Mesmo prefixo de projeto que `iniciar_tela_viva` grava
+        // (`crates/mcp-server/src/ui.rs`) — sem ele leríamos (ou, pior,
+        // misturaríamos com) a tela de uma sandbox de OUTRO projeto com o
+        // mesmo nome.
+        let chave = format!("{}.{}", sandbox_sanitize(self.project()), sandbox_sanitize(name));
         let caminho = self
             .store
             .ui_get(&format!("sandbox.{chave}.tela_viva"))
@@ -1890,6 +1901,16 @@ impl Engine {
             // Autor das memórias que esta IA gravar (e quem a instrução
             // invisível chama pelo nome).
             ("ORCHESTRATOR_AGENT".to_string(), agent.to_string()),
+            // A pasta que a sandbox desta CLI monta por padrão (`ui_open`
+            // sem `workdir`). Antes só o CHAT do orquestrador publicava isto
+            // (e só para SI MESMO, via uma variável de processo global) —
+            // as CLIs abertas em cards não tinham isto no próprio ambiente
+            // nenhum, então `ui_open` sem workdir caía vazio ou pegava a
+            // pasta de OUTRO projeto que por acaso tivesse passado por ali.
+            (
+                "ORCHESTRATOR_WORKDIR".to_string(),
+                self.workspace_dir().display().to_string(),
+            ),
         ];
         if managed {
             envs.push(("ORCHESTRATOR_AUTONOMOUS".to_string(), "1".to_string()));
@@ -2074,7 +2095,18 @@ impl Engine {
             ));
         }
         let dir = cwd.unwrap_or_else(|| self.workspace_dir());
-        let launch = self.card_launch(name, command, args, true)?;
+        let mut launch = self.card_launch(name, command, args, true)?;
+        // `cli_envs` (dentro de `card_launch`) supõe a pasta da workspace
+        // ativa — corrige aqui quando esta CLI nasceu com um `cwd` explícito
+        // diferente (payload de `cli_start`), senão `ui_open` sem `workdir`
+        // montaria a pasta errada.
+        if dir != self.workspace_dir() {
+            let valor = dir.display().to_string();
+            match launch.env.iter_mut().find(|(k, _)| k == "ORCHESTRATOR_WORKDIR") {
+                Some((_, v)) => *v = valor,
+                None => launch.env.push(("ORCHESTRATOR_WORKDIR".to_string(), valor)),
+            }
+        }
         match TermSession::spawn_env(name.to_string(), &launch.program, &launch.args, &dir, 24, 80, &launch.env) {
             Ok(mut session) => {
                 session.managed = true;
@@ -2859,6 +2891,17 @@ mod tests {
         assert_eq!(codex.program, "codex");
         assert!(codex.env.contains(&("ORCHESTRATOR_HARNESS".into(), "codex".into())));
         assert!(codex.env.contains(&("ORCHESTRATOR_AUTONOMOUS".into(), "1".into())));
+        // `ui_open` sem `workdir` precisa cair na pasta certa mesmo numa CLI
+        // aberta em card — sem isto ela só herdava (ou não) o que a variável
+        // GLOBAL do processo tivesse por acaso, do último chat, de outro
+        // projeto qualquer.
+        assert!(
+            codex
+                .env
+                .contains(&("ORCHESTRATOR_WORKDIR".into(), e.workspace_dir().display().to_string())),
+            "{:?}",
+            codex.env
+        );
 
         e.clis.push(orchestrator_core::CliSpec {
             name: "Meu Claude".into(),

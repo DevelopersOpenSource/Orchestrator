@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { nucleo } from "../nucleo";
 
-const ULTIMA_CHAVE = "orchestrator.sandboxVista";
-
 /**
  * A "tela virtual": o que a sandbox de teste do orquestrador (`ui_open`) está
  * mostrando agora, ao vivo. Não é um terminal — é a imagem que o navegador
  * dentro do container está renderizando, atualizada a cada ~1.5s enquanto
  * esta tela estiver aberta.
+ *
+ * `projeto` entra na chave do localStorage e no `key` do componente (posto
+ * pelo App): o nome de sandbox lembrado é POR PROJETO — sem isso, trocar de
+ * projeto continuava mostrando (ou tentando mostrar) a sandbox do projeto
+ * anterior.
  */
-export function Sandbox({ voltar }: { voltar: () => void }) {
+export function Sandbox({ projeto, voltar }: { projeto: string; voltar: () => void }) {
+  const chaveStorage = `orchestrator.sandboxVista.${projeto}`;
   const [nome, setNome] = useState(() => {
     try {
-      return localStorage.getItem(ULTIMA_CHAVE) ?? "";
+      return localStorage.getItem(chaveStorage) ?? "";
     } catch {
       return "";
     }
@@ -24,10 +28,11 @@ export function Sandbox({ voltar }: { voltar: () => void }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(ULTIMA_CHAVE, nome);
+      localStorage.setItem(chaveStorage, nome);
     } catch {
       /* modo privado ou storage bloqueado — sem persistência, sem problema */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nome]);
 
   useEffect(() => {
@@ -63,10 +68,10 @@ export function Sandbox({ voltar }: { voltar: () => void }) {
     <section className="sandbox-vista">
       <header className="decisoes-topo">
         <div>
-          <h1>Tela virtual</h1>
+          <h1>Tela virtual — {projeto}</h1>
           <p>
-            O que a sandbox de teste do orquestrador está mostrando agora — peça a ele "abra uma sandbox chamada X" e digite o nome
-            aqui para acompanhar.
+            O que a sandbox de teste do orquestrador está mostrando agora neste projeto — peça a ele "abra uma sandbox chamada X" e
+            digite o nome aqui para acompanhar.
           </p>
         </div>
         <button className="botao" onClick={voltar} title="Voltar ao workbench">

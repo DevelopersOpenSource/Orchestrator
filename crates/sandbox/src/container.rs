@@ -151,8 +151,21 @@ pub struct Sandbox {
 }
 
 /// Nome do container de uma sandbox.
+///
+/// Prefixado pelo projeto ativo (`ORCHESTRATOR_PROJECT`, exportado pelo
+/// Orchestrator para toda CLI e para o próprio chat do orquestrador): o
+/// nome do container é GLOBAL na máquina — sem o prefixo, uma CLI do
+/// projeto A e outra do projeto B que escolhem o mesmo nome de sandbox
+/// (ex.: "teste") colidiriam no MESMO container. O nome que o chamador vê
+/// (`Sandbox.name`/respostas de `ui_*`) continua o nome cru que ele pediu —
+/// só o identificador no podman ganha o prefixo.
 pub fn container_name(name: &str) -> String {
-    format!("orch-sbx-{}", sanitize(name))
+    match std::env::var("ORCHESTRATOR_PROJECT") {
+        Ok(p) if !p.trim().is_empty() => {
+            format!("orch-sbx-{}-{}", sanitize(&p), sanitize(name))
+        }
+        _ => format!("orch-sbx-{}", sanitize(name)),
+    }
 }
 
 /// Reduz o nome a algo que o podman aceita como nome de container.
@@ -646,12 +659,30 @@ mod tests {
 
     #[test]
     fn sanitize_makes_a_valid_container_name() {
+        // `container_name` lê ORCHESTRATOR_PROJECT — outro teste no mesmo
+        // processo mexe nela, então garante que não sobrou nada aqui.
+        std::env::remove_var("ORCHESTRATOR_PROJECT");
         assert_eq!(sanitize("frontend"), "frontend");
         assert_eq!(sanitize("Meu Teste!"), "meu-teste");
         assert_eq!(sanitize("--"), "sandbox");
         assert_eq!(sanitize(""), "sandbox");
         assert_eq!(sanitize(&"x".repeat(80)).len(), 40);
         assert_eq!(container_name("Meu Teste"), "orch-sbx-meu-teste");
+    }
+
+    #[test]
+    fn container_name_is_isolated_per_project() {
+        // Precisa ficar isolado do teste acima (ambos mexem no MESMO env var
+        // do processo): garante que não sobrou nada de uma run anterior.
+        std::env::remove_var("ORCHESTRATOR_PROJECT");
+        assert_eq!(container_name("teste"), "orch-sbx-teste");
+        std::env::set_var("ORCHESTRATOR_PROJECT", "Minha Loja");
+        assert_eq!(container_name("teste"), "orch-sbx-minha-loja-teste");
+        // Outro projeto com o MESMO nome de sandbox não pode virar o mesmo
+        // container — é exatamente o conflito que isto existe para evitar.
+        std::env::set_var("ORCHESTRATOR_PROJECT", "Outra Loja");
+        assert_eq!(container_name("teste"), "orch-sbx-outra-loja-teste");
+        std::env::remove_var("ORCHESTRATOR_PROJECT");
         // O nome também nomeia o PNG do screenshot no host: nem barra nem
         // ponto podem sobrar, senão um ".." no nome escaparia da pasta.
         let travessia = sanitize("../../home/eu/.config/autostart/x");

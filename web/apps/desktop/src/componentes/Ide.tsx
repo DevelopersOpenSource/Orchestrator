@@ -18,8 +18,13 @@ import { nucleo, type EntradaArquivo } from "../nucleo";
  * (CodeMirror 6, com destaque para as linguagens mais comuns) à direita.
  * Não é o VSCode — é o suficiente para abrir, editar e salvar um arquivo do
  * projeto sem sair do Orchestrator. Sem LSP, sem git, sem extensões.
+ *
+ * `projeto` só entra para mostrar de qual projeto é a árvore — o App monta
+ * este componente com `key={foto.projeto}`, então trocar de projeto sempre
+ * remonta do zero (árvore, arquivo aberto e tudo mais são deste componente,
+ * não sobrevivem à troca por design).
  */
-export function Ide({ voltar }: { voltar: () => void }) {
+export function Ide({ projeto, voltar }: { projeto: string; voltar: () => void }) {
   const [arvore, setArvore] = useState<Record<string, EntradaArquivo[]>>({});
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [ativo, setAtivo] = useState<string | null>(null);
@@ -135,7 +140,7 @@ export function Ide({ voltar }: { voltar: () => void }) {
     <section className="ide-vista">
       <header className="decisoes-topo">
         <div>
-          <h1>IDE</h1>
+          <h1>IDE — {projeto}</h1>
           <p>Abra e edite arquivos do projeto direto aqui — sem LSP, sem git, só o essencial.</p>
         </div>
         <div className="ide-acoes-topo">
