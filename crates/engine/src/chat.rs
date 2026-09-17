@@ -509,20 +509,31 @@ impl ChatState {
                         StreamEvent::Stream(ApiStreamEvent::ContentBlockStart {
                             index,
                             tool_use_name: Some(tool),
+                            tool_use_id,
                             ..
                         }) => {
-                            tools.start(index, &tool);
+                            tools.start(index, &tool, tool_use_id.as_deref());
                         }
                         StreamEvent::Stream(ApiStreamEvent::ToolInputDelta {
                             index,
                             partial_json,
                         }) => tools.push(index, &partial_json),
                         StreamEvent::Stream(ApiStreamEvent::ContentBlockStop { index }) => {
-                            // Tool call completa: comando bash, arquivo
-                            // escrito, linhas mudadas — o que o usuário pediu
-                            // para conseguir ver.
+                            // Tool call completa: a tarefa (Bash exige
+                            // `description`), o arquivo escrito, o diff —
+                            // o que o usuário pediu para conseguir ver.
                             if let Some(line) = tools.finish(index) {
                                 let _ = tx.send(ChatEvent::Delta(format!("\n{line}\n")));
+                            }
+                        }
+                        StreamEvent::ToolResults(results) => {
+                            // Só o que falhou vira linha (sucesso não precisa
+                            // de ruído extra): é o "identificar shells que
+                            // falharam" — com a saída de verdade, não só o ✖.
+                            for r in &results {
+                                if let Some(line) = tools.describe_result(r) {
+                                    let _ = tx.send(ChatEvent::Delta(format!("\n{line}\n")));
+                                }
                             }
                         }
                         StreamEvent::Stream(ApiStreamEvent::Usage {

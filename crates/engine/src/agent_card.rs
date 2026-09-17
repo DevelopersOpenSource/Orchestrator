@@ -382,8 +382,9 @@ fn run_turn_thread(
                     StreamEvent::Stream(ApiStreamEvent::ContentBlockStart {
                         index,
                         tool_use_name: Some(tool),
+                        tool_use_id,
                         ..
-                    }) => tools.start(index, &tool),
+                    }) => tools.start(index, &tool, tool_use_id.as_deref()),
                     StreamEvent::Stream(ApiStreamEvent::ToolInputDelta {
                         index,
                         partial_json,
@@ -391,6 +392,13 @@ fn run_turn_thread(
                     StreamEvent::Stream(ApiStreamEvent::ContentBlockStop { index }) => {
                         if let Some(line) = tools.finish(index) {
                             let _ = tx.send(ChatEvent::Delta(format!("\n{line}\n")));
+                        }
+                    }
+                    StreamEvent::ToolResults(results) => {
+                        for r in &results {
+                            if let Some(line) = tools.describe_result(r) {
+                                let _ = tx.send(ChatEvent::Delta(format!("\n{line}\n")));
+                            }
                         }
                     }
                     StreamEvent::Result {
