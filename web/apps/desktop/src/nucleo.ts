@@ -88,6 +88,12 @@ export interface SshHost {
   global: boolean;
 }
 
+export interface RemotoStatus {
+  senhaDefinida: boolean;
+  /** URL pública do túnel enquanto ligado; `null` quando desligado. */
+  url: string | null;
+}
+
 export interface EntradaArquivo {
   nome: string;
   /** Relativo à raiz do projeto — é o que volta para `ideLer`/`ideSalvar`. */
@@ -142,6 +148,11 @@ export const nucleo = {
   /** Sem `url`, só sobe o container; com `docker`, deixa rodar containers dentro. */
   iniciarSandbox: (nome: string, url: string, docker: boolean) => invoke<string>("iniciar_sandbox", { nome, url, docker }),
   pararSandbox: (nome: string) => invoke<string>("parar_sandbox", { nome }),
+  remotoDefinirSenha: (senha: string) => invoke<void>("remoto_definir_senha", { senha }),
+  remotoStatus: () => invoke<RemotoStatus>("remoto_status"),
+  /** Sobe o servidor local (loopback) se preciso e abre o túnel; devolve a URL. */
+  remotoLigar: () => invoke<string>("remoto_ligar"),
+  remotoDesligar: () => invoke<void>("remoto_desligar"),
   trocarWorkspace: (indice: number) => invoke<void>("trocar_workspace", { indice }),
   focarCard: (indice: number) => invoke<void>("focar_card", { indice }),
   fecharCard: (indice: number) => invoke<void>("fechar_card", { indice }),

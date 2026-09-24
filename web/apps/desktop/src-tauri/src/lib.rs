@@ -6,7 +6,7 @@
 //! passam por [`Engine::run_command`], e a saída de cada CLI chega ao xterm.js
 //! byte a byte, por canal.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -18,8 +18,11 @@ use orchestrator_engine::palette::{self, Readiness};
 use orchestrator_engine::workbench::{CommandOutcome, Engine, EngineEvent, Pane, RELOAD_EVERY};
 use orchestrator_memory::store::MemoryStore;
 
-/// O núcleo, compartilhado entre os comandos e o laço.
-struct Nucleo(Mutex<Engine>);
+mod remoto;
+
+/// O núcleo, compartilhado entre os comandos, o laço e o servidor remoto.
+/// `Arc` para o servidor web (`remoto`) segurar um clone do MESMO Engine.
+struct Nucleo(Arc<Mutex<Engine>>);
 
 const TICK: Duration = Duration::from_millis(100);
 
@@ -840,6 +843,48 @@ fn memoria_api() -> String {
 // ------------------------------------------------------------------ laço
 
 /// O mesmo trabalho do laço da TUI, sem desenhar: quem desenha é a janela.
+// ------------------------------------------------------ acesso remoto
+
+/// Define a senha do acesso remoto (guardada com hash+sal, nunca em texto).
+#[tauri::command]
+fn remoto_definir_senha(nucleo: State<'_, Nucleo>, senha: String) -> Result<(), String> {
+    let e = travar(&nucleo)?;
+    remoto::definir_senha(&e.store, &senha)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RemotoStatus {
+    senha_definida: bool,
+    url: Option<String>,
+}
+
+#[tauri::command]
+fn remoto_status(nucleo: State<'_, Nucleo>, remoto: State<'_, remoto::Remoto>) -> Result<RemotoStatus, String> {
+    let senha_definida = {
+        let e = travar(&nucleo)?;
+        remoto::senha_definida(&e.store)
+    };
+    Ok(RemotoStatus { senha_definida, url: remoto.url() })
+}
+
+/// Liga o túnel Cloudflare (sobe o servidor local se preciso) e devolve a URL.
+/// Bloqueia até o cloudflared responder, então roda fora do executor async.
+#[tauri::command]
+async fn remoto_ligar(app: AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let remoto = app.state::<remoto::Remoto>();
+        remoto.ligar(&app)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn remoto_desligar(remoto: State<'_, remoto::Remoto>) -> Result<(), String> {
+    remoto.desligar()
+}
+
 fn laco(app: AppHandle) {
     let mut ultima: Option<String> = None;
     loop {
@@ -906,8 +951,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(Nucleo(Mutex::new(engine)))
+        .manage(Nucleo(Arc::new(Mutex::new(engine))))
         .manage(Sandboxes::default())
+        .manage(remoto::Remoto::default())
         .setup(move |app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || laco(handle));
@@ -934,6 +980,10 @@ pub fn run() {
             ssh_salvar,
             iniciar_sandbox,
             parar_sandbox,
+            remoto_definir_senha,
+            remoto_status,
+            remoto_ligar,
+            remoto_desligar,
             trocar_workspace,
             focar_card,
             fechar_card,

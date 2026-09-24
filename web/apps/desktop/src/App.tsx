@@ -10,6 +10,7 @@ import { Memoria } from "./componentes/Memoria";
 import { Sandbox } from "./componentes/Sandbox";
 import { Ide } from "./componentes/Ide";
 import { Ssh } from "./componentes/Ssh";
+import { Remoto } from "./componentes/Remoto";
 import { open as escolherPasta } from "@tauri-apps/plugin-dialog";
 
 type Vista = "workbench" | "decisoes" | "sandbox" | "ide";
@@ -96,6 +97,7 @@ export function App() {
   const [provedores, setProvedores] = useState(false);
   const [modelos, setModelos] = useState(false);
   const [ssh, setSsh] = useState(false);
+  const [remoto, setRemoto] = useState(false);
   /** Menu do botão direito num projeto ou workspace da lateral. */
   const [menu, setMenu] = useState<{ tipo: "projeto" | "workspace"; alvo: string; indice: number; x: number; y: number } | null>(null);
   const [avisoLateral, setAvisoLateral] = useState("");
@@ -298,6 +300,9 @@ export function App() {
             <button className="botao botao-largo" onClick={() => setSsh(true)}>
               Conexões SSH
             </button>
+            <button className="botao botao-largo" onClick={() => setRemoto(true)}>
+              Acesso remoto
+            </button>
             {avisoLateral && <p className="dica">{avisoLateral}</p>}
             <p className="dica">Ou peça no chat: “abra uma CLI chamada frontend”.</p>
           </div>
@@ -479,6 +484,7 @@ export function App() {
       <Provedores aberta={provedores} fechar={() => setProvedores(false)} />
       <Modelos aberta={modelos} fechar={() => setModelos(false)} foto={foto} />
       <Ssh aberta={ssh} fechar={() => setSsh(false)} projeto={foto.projeto} />
+      <Remoto aberta={remoto} fechar={() => setRemoto(false)} />
       {menu && (
         <div className="menu-contexto" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
           <button onClick={() => void trocarPasta(menu.tipo, menu.alvo, menu.indice)}>Alterar pasta…</button>

@@ -12,6 +12,10 @@ crate-type = ["rlib"]
 [build-dependencies]
 tauri-build = { version = "2.6", features = [] }
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"
+
 [dependencies]
 tauri = { version = "2.11", features = [] }
 tauri-plugin-dialog = "2.7"
@@ -23,3 +27,7 @@ orchestrator-memory = { path = "../../../../crates/memory" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+axum = "0.8"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "sync", "time", "io-util", "process", "macros"] }
+tokio-stream = "0.1"
+sha2 = "0.10"
