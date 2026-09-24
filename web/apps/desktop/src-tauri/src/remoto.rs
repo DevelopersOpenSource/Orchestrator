@@ -40,6 +40,13 @@ use tokio_stream::StreamExt;
 use orchestrator_engine::workbench::Engine;
 use orchestrator_memory::store::MemoryStore;
 
+/// O frontend REAL do app (o mesmo `dist/` que a janela desenha), embutido no
+/// binário. Servido pelo túnel para o navegador usar o app de verdade — não
+/// uma página à parte.
+#[derive(rust_embed::Embed)]
+#[folder = "../dist"]
+struct Frontend;
+
 /// O Engine compartilhado (o MESMO da janela). O servidor web nunca passa
 /// pelo `State` do Tauri — segura um clone deste Arc.
 type Motor = Arc<Mutex<Engine>>;
@@ -305,6 +312,7 @@ type Guarda = Arc<Mutex<Protecao>>;
 
 #[derive(Clone)]
 struct Estado {
+    app: AppHandle,
     motor: Motor,
     sessoes: Sessoes,
     protecao: Guarda,
@@ -364,12 +372,111 @@ fn foto_json(motor: &Motor) -> String {
 // ---------------------------------------------------------------- rotas
 
 /// A raiz só serve o app para quem já tem sessão; senão, 404 (esconde tudo).
+/// Serve um arquivo do frontend embutido (com o content-type certo).
+fn arquivo_embutido(caminho: &str) -> Response {
+    let caminho = caminho.trim_start_matches('/');
+    let caminho = if caminho.is_empty() { "index.html" } else { caminho };
+    match Frontend::get(caminho) {
+        Some(f) => {
+            let mime = f.metadata.mimetype().to_string();
+            ([(header::CONTENT_TYPE, mime)], f.data.into_owned()).into_response()
+        }
+        // SPA: caminho desconhecido cai no index (o app é uma página só).
+        None => match Frontend::get("index.html") {
+            Some(f) => ([(header::CONTENT_TYPE, "text/html")], f.data.into_owned()).into_response(),
+            None => nada(),
+        },
+    }
+}
+
+/// A raiz e qualquer rota do app: só para quem tem sessão; senão 404 (esconde).
 async fn raiz(State(e): State<Estado>, headers: HeaderMap) -> Response {
     if autenticado(&e, &headers) {
-        Html(PAGINA_APP).into_response()
+        arquivo_embutido("index.html")
     } else {
         nada()
     }
+}
+
+/// Assets do frontend (`/assets/...`, fontes, etc.): exigem sessão.
+async fn asset(State(e): State<Estado>, headers: HeaderMap, Path(caminho): Path<String>) -> Response {
+    if !autenticado(&e, &headers) {
+        return nada();
+    }
+    arquivo_embutido(&caminho)
+}
+
+/// `POST /rpc/{cmd}` — a ponte do `invoke` do navegador para o MESMO código
+/// dos comandos do app. Roda em thread bloqueante.
+async fn rpc(State(e): State<Estado>, Path(cmd): Path<String>, headers: HeaderMap, corpo: Option<Json<Value>>) -> Response {
+    if !autenticado(&e, &headers) {
+        return negar();
+    }
+    let app = e.app.clone();
+    let args = corpo.map(|Json(v)| v).unwrap_or(Value::Null);
+    let r = tauri::async_runtime::spawn_blocking(move || crate::despachar(&app, &cmd, &args)).await;
+    match r {
+        Ok(Ok(dado)) => Json(json!({ "dado": dado })).into_response(),
+        Ok(Err(erro)) => (StatusCode::BAD_REQUEST, Json(json!({ "erro": erro }))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "erro": e.to_string() }))).into_response(),
+    }
+}
+
+/// SSE do estado — o `listen("estado")` do navegador vira isto.
+async fn eventos_sse(State(e): State<Estado>, headers: HeaderMap) -> Response {
+    if !autenticado(&e, &headers) {
+        return negar();
+    }
+    let motor = e.motor.clone();
+    let stream = IntervalStream::new(tokio::time::interval(Duration::from_millis(400))).map(move |_| {
+        Ok::<Event, std::convert::Infallible>(Event::default().event("estado").data(foto_json(&motor)))
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+}
+
+/// SSE de um terminal — a tela atual e depois cada pedaço de saída, em base64.
+async fn terminal_sse(State(e): State<Estado>, headers: HeaderMap, Path(indice): Path<usize>) -> Response {
+    use orchestrator_engine::workbench::Pane;
+    if !autenticado(&e, &headers) {
+        return negar();
+    }
+    let assinatura = {
+        let Ok(eng) = e.motor.lock() else {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "núcleo travado").into_response();
+        };
+        match eng.workspaces[eng.ws_idx].panes.get(indice) {
+            Some(Pane::Term(t)) => t.subscribe_output(),
+            _ => return (StatusCode::NOT_FOUND, "esse card não é um terminal").into_response(),
+        }
+    };
+    let (tela, rx) = assinatura;
+    // Primeiro a tela atual; depois cada pedaço que chegar no canal.
+    let inicial = tokio_stream::once(base64_b(&tela));
+    let resto = IntervalStream::new(tokio::time::interval(Duration::from_millis(60))).filter_map(move |_| {
+        let mut junto: Vec<u8> = Vec::new();
+        while let Ok(p) = rx.try_recv() {
+            junto.extend_from_slice(&p);
+        }
+        (!junto.is_empty()).then(|| base64_b(&junto))
+    });
+    let stream = inicial.chain(resto).map(|d| Ok::<Event, std::convert::Infallible>(Event::default().data(d)));
+    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+}
+
+fn base64_b(bytes: &[u8]) -> String {
+    // base64 padrão (o navegador decodifica com atob).
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let b0 = c[0];
+        let b1 = *c.get(1).unwrap_or(&0);
+        let b2 = *c.get(2).unwrap_or(&0);
+        out.push(T[(b0 >> 2) as usize] as char);
+        out.push(T[(((b0 & 3) << 4) | (b1 >> 4)) as usize] as char);
+        out.push(if c.len() > 1 { T[(((b1 & 15) << 2) | (b2 >> 6)) as usize] as char } else { '=' });
+        out.push(if c.len() > 2 { T[(b2 & 63) as usize] as char } else { '=' });
+    }
+    out
 }
 
 /// A tela de login só existe no caminho secreto `/entrar/<token>`.
@@ -553,19 +660,20 @@ fn rotas(estado: Estado) -> Router {
         .route("/", get(raiz))
         .route("/entrar/{token}", get(entrar_pagina).post(entrar_login))
         .route("/logout", post(logout))
-        .route("/estado", get(estado_sse))
-        .route("/enviar", post(enviar))
-        .route("/acao/{cmd}", post(acao))
-        .route("/admin/regenerar", post(admin_regenerar))
-        .route("/admin/revogar", post(admin_revogar))
+        // O app REAL, servido pelo túnel: o frontend embutido + a ponte.
+        .route("/rpc/{cmd}", post(rpc))
+        .route("/eventos", get(eventos_sse))
+        .route("/terminal/{indice}", get(terminal_sse))
+        .route("/assets/{*caminho}", get(asset))
+        .route("/vite.svg", get(asset))
         .layer(middleware::from_fn(cabecalhos))
         .with_state(estado)
 }
 
 /// Sobe o servidor (uma vez). Bind SÓ no loopback — nunca 0.0.0.0.
-pub async fn servir(motor: Motor, sessoes: Sessoes, protecao: Guarda) -> anyhow::Result<()> {
+pub async fn servir(app: AppHandle, motor: Motor, sessoes: Sessoes, protecao: Guarda) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, PORTA)).await?;
-    axum::serve(listener, rotas(Estado { motor, sessoes, protecao })).await?;
+    axum::serve(listener, rotas(Estado { app, motor, sessoes, protecao })).await?;
     Ok(())
 }
 
@@ -596,14 +704,14 @@ impl Remoto {
         self.protecao.lock().expect("protecao").get_or_insert_with(|| Arc::new(Mutex::new(Protecao::default()))).clone()
     }
 
-    fn garantir_servidor(&self, motor: Motor) {
+    fn garantir_servidor(&self, app: AppHandle, motor: Motor) {
         if self.servidor_no_ar.swap(true, Ordering::SeqCst) {
             return;
         }
         let sessoes = self.sessoes();
         let protecao = self.protecao();
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = servir(motor, sessoes, protecao).await {
+            if let Err(e) = servir(app, motor, sessoes, protecao).await {
                 eprintln!("servidor remoto caiu: {e:#}");
             }
         });
@@ -625,7 +733,7 @@ impl Remoto {
         if let Some(t) = self.tunel.lock().map_err(|_| "estado travado".to_string())?.as_ref() {
             return Ok(t.url.clone());
         }
-        self.garantir_servidor(motor);
+        self.garantir_servidor(app.clone(), motor);
         std::thread::sleep(Duration::from_millis(300));
 
         let mut filho = std::process::Command::new("cloudflared")

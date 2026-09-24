@@ -1,7 +1,47 @@
 // Ponte com o núcleo em Rust (comandos Tauri e eventos do laço).
 
-import { Channel, invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { Channel as TauriChannel, invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
+
+// ------------------------------------------------------------ transporte
+// O MESMO frontend roda na janela Tauri (IPC nativo) e no navegador pelo
+// túnel (HTTP/SSE). Esta ponte decide o caminho; o resto do código nem sabe.
+
+const emTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (emTauri) return tauriInvoke<T>(cmd, args);
+  const r = await fetch(`/rpc/${cmd}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(args ?? {}),
+  });
+  if (r.status === 401) {
+    location.href = "/";
+    throw new Error("sessão expirada — reabra o link de acesso");
+  }
+  const j = await r.json().catch(() => ({}) as { dado?: unknown; erro?: string });
+  if (!r.ok || j.erro) throw new Error(j.erro ?? `falha em ${cmd}`);
+  return (j.dado ?? null) as T;
+}
+
+// SSE do estado (o `listen("estado")` no navegador).
+let sseEstado: EventSource | null = null;
+const ouvintesEstado = new Set<(f: Foto) => void>();
+function garantirSSEEstado() {
+  if (emTauri || sseEstado) return;
+  sseEstado = new EventSource("/eventos");
+  sseEstado.addEventListener("estado", (ev) => {
+    try {
+      const f = JSON.parse((ev as MessageEvent).data) as Foto;
+      ouvintesEstado.forEach((cb) => cb(f));
+    } catch {
+      /* pedaço inválido, ignora */
+    }
+  });
+}
+
+const terminaisSSE = new Map<number, EventSource>();
 
 export interface Linha {
   quem: string;
@@ -189,13 +229,35 @@ export const nucleo = {
 
   /** Liga um terminal: `aoReceber` ganha a tela atual e depois cada pedaço. */
   assinarTerminal(indice: number, aoReceber: (bytes: Uint8Array) => void): Promise<void> {
-    const canal = new Channel<ArrayBuffer | number[]>();
-    canal.onmessage = (dados) => {
-      aoReceber(dados instanceof ArrayBuffer ? new Uint8Array(dados) : Uint8Array.from(dados));
+    if (emTauri) {
+      const canal = new TauriChannel<ArrayBuffer | number[]>();
+      canal.onmessage = (dados) => {
+        aoReceber(dados instanceof ArrayBuffer ? new Uint8Array(dados) : Uint8Array.from(dados));
+      };
+      return tauriInvoke<void>("assinar_terminal", { indice, canal });
+    }
+    // Navegador: SSE com a saída em base64.
+    terminaisSSE.get(indice)?.close();
+    const es = new EventSource(`/terminal/${indice}`);
+    es.onmessage = (ev) => {
+      const bin = atob(ev.data);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      aoReceber(bytes);
     };
-    return invoke<void>("assinar_terminal", { indice, canal });
+    terminaisSSE.set(indice, es);
+    return Promise.resolve();
   },
 
-  aoMudarEstado: (f: (foto: Foto) => void): Promise<UnlistenFn> => listen<Foto>("estado", (e) => f(e.payload)),
-  aoPedir: (f: (pedido: Pedido) => void): Promise<UnlistenFn> => listen<Pedido>("pedido", (e) => f(e.payload)),
+  aoMudarEstado: (f: (foto: Foto) => void): Promise<UnlistenFn> => {
+    if (emTauri) return tauriListen<Foto>("estado", (e) => f(e.payload));
+    garantirSSEEstado();
+    ouvintesEstado.add(f);
+    return Promise.resolve(() => ouvintesEstado.delete(f));
+  },
+  aoPedir: (f: (pedido: Pedido) => void): Promise<UnlistenFn> => {
+    // Os "pedidos" (foco de janela) só fazem sentido no app nativo.
+    if (emTauri) return tauriListen<Pedido>("pedido", (e) => f(e.payload));
+    return Promise.resolve(() => {});
+  },
 };

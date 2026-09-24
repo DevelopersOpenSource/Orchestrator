@@ -34,3 +34,4 @@ tokio-stream = "0.1"
 sha2 = "0.10"
 sha1 = "0.10"
 hmac = "0.12"
+rust-embed = { version = "8.12", features = ["mime-guess"] }

@@ -957,6 +957,66 @@ fn remoto_desligar(remoto: State<'_, remoto::Remoto>) -> Result<(), String> {
     remoto.desligar()
 }
 
+/// Despacha um comando do NAVEGADOR (acesso remoto) para o MESMO código dos
+/// comandos Tauri — chamando cada função com `app.state()`/`app.clone()`,
+/// sem duplicar lógica. Roda em thread bloqueante (o servidor web chama em
+/// spawn_blocking), então pode bloquear nos comandos async.
+pub(crate) fn despachar(app: &AppHandle, cmd: &str, args: &serde_json::Value) -> Result<serde_json::Value, String> {
+    use serde_json::json;
+    let st = || app.state::<Nucleo>();
+    let s = |k: &str| args.get(k).and_then(serde_json::Value::as_str).unwrap_or("").to_string();
+    let u = |k: &str| args.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
+    let u16v = |k: &str| args.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0) as u16;
+    let b = |k: &str| args.get(k).and_then(serde_json::Value::as_bool).unwrap_or(false);
+    fn val<T: Serialize>(r: Result<T, String>) -> Result<serde_json::Value, String> {
+        r.and_then(|x| serde_json::to_value(x).map_err(|e| e.to_string()))
+    }
+    match cmd {
+        "estado" => val(estado(st())),
+        "enviar" => val(enviar(app.clone(), st(), s("texto"))),
+        "paleta" => val(paleta(st(), s("texto"))),
+        "provedores" => val(provedores(st())),
+        "escolher_provedor" => val(escolher_provedor(app.clone(), st(), s("nome"))),
+        "sincronizar_modelos" => val(sincronizar_modelos(st())),
+        "testar_modelo" => val(testar_modelo(st(), s("modelo"))),
+        "tela_viva" => val(tela_viva(st(), s("nome"))),
+        "ide_listar" => val(ide_listar(st(), s("pasta"))),
+        "ide_ler" => val(ide_ler(st(), s("caminho"))),
+        "ide_salvar" => val(ide_salvar(st(), s("caminho"), s("conteudo"))),
+        "alterar_pasta_projeto" => val(alterar_pasta_projeto(st(), s("nome"), s("pasta"))),
+        "alterar_pasta_workspace" => val(alterar_pasta_workspace(st(), u("indice"), s("pasta"))),
+        "abrir_terminal" => val(abrir_terminal(st())),
+        "abrir_ssh" => val(abrir_ssh(st(), s("nome"))),
+        "ssh_listar" => val(ssh_listar(st())),
+        "ssh_salvar" => {
+            let hosts = serde_json::from_value(args.get("hosts").cloned().unwrap_or(json!([]))).map_err(|e| e.to_string())?;
+            val(ssh_salvar(st(), hosts))
+        }
+        "definir_perm_modo" => val(definir_perm_modo(st(), s("modo"))),
+        "trocar_workspace" => val(trocar_workspace(st(), u("indice"))),
+        "focar_card" => val(focar_card(st(), u("indice"))),
+        "fechar_card" => val(fechar_card(app.clone(), st(), u("indice"))),
+        "resolver_decisao" => val(resolver_decisao(st(), s("id"), b("aprovar"))),
+        "responder_pergunta" => val(responder_pergunta(st(), s("id"), s("resposta"))),
+        "escrever_terminal" => val(escrever_terminal(st(), u("indice"), s("dados"))),
+        "redimensionar_terminal" => val(redimensionar_terminal(st(), u("indice"), u16v("linhas"), u16v("colunas"))),
+        "iterar_agente" => val(iterar_agente(st(), u("indice"), s("texto"))),
+        "memoria_api" => Ok(json!(memoria_api())),
+        "remoto_definir_senha" => val(remoto_definir_senha(st(), s("senha"))),
+        "remoto_status" => val(remoto_status(st(), app.state())),
+        "remoto_desligar" => val(remoto_desligar(app.state())),
+        "remoto_regenerar_token" => val(remoto_regenerar_token(st(), app.state())),
+        "remoto_revogar_sessoes" => val(remoto_revogar_sessoes(app.state())),
+        "remoto_totp_iniciar" => val(remoto_totp_iniciar(st())),
+        "remoto_totp_ativar" => val(remoto_totp_ativar(st(), s("codigo"))),
+        "remoto_totp_desativar" => val(remoto_totp_desativar(st())),
+        "iniciar_sandbox" => tauri::async_runtime::block_on(iniciar_sandbox(app.clone(), s("nome"), s("url"), b("docker"))).map(|x| json!(x)),
+        "parar_sandbox" => tauri::async_runtime::block_on(parar_sandbox(app.clone(), s("nome"))).map(|x| json!(x)),
+        "remoto_ligar" => tauri::async_runtime::block_on(remoto_ligar(app.clone())).map(|x| json!(x)),
+        outro => Err(format!("comando desconhecido: {outro}")),
+    }
+}
+
 fn laco(app: AppHandle) {
     let mut ultima: Option<String> = None;
     loop {
