@@ -25,6 +25,16 @@ export function Remoto({ aberta, fechar }: { aberta: boolean; fechar: () => void
     void recarregar();
   }, [aberta]);
 
+  // Recarrega o status a cada 4s enquanto aberto (para ver acessos novos).
+  // Precisa ficar ANTES de qualquer return — todos os hooks são chamados
+  // incondicionalmente, senão o React quebra ("more hooks than previous").
+  useEffect(() => {
+    if (!aberta) return;
+    const id = window.setInterval(() => void recarregar(), 4000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberta]);
+
   if (!aberta) return null;
 
   const salvarSenha = async () => {
@@ -55,14 +65,6 @@ export function Remoto({ aberta, fechar }: { aberta: boolean; fechar: () => void
       setOcupado(false);
     }
   };
-
-  // Recarrega o status a cada 4s enquanto aberto (para ver acessos novos).
-  useEffect(() => {
-    if (!aberta) return;
-    const id = window.setInterval(() => void recarregar(), 4000);
-    return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aberta]);
 
   const desligar = async () => {
     setOcupado(true);

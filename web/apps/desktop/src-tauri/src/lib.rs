@@ -980,14 +980,26 @@ fn abrir_nucleo() -> anyhow::Result<Engine> {
     Ok(engine)
 }
 
-/// O WebKitGTK derruba a janela no Wayland ("Error 71 dispatching to Wayland
-/// display") com o renderizador DMABUF — medido aqui (Fedora/KDE, AMD). Sem
-/// ele a janela abre normal; quem já definiu a variável manda.
+/// Contorna a tela preta do WebKitGTK no Wayland (Fedora/Nobara, KDE, AMD).
+///
+/// Duas variáveis, ambas antes de qualquer thread do GTK existir:
+/// - `WEBKIT_DISABLE_DMABUF_RENDERER`: já resolvia o "Error 71 dispatching to
+///   Wayland" nas versões antigas.
+/// - `WEBKIT_DISABLE_COMPOSITING_MODE`: a partir do WebKitGTK 2.52 desligar só
+///   o DMABUF não bastava — a janela abria TODA preta (o processo do WebKit já
+///   recebia a 1ª variável e mesmo assim não pintava). Desligar a composição
+///   acelerada faz a interface aparecer. Medido nesta máquina em set/2026.
+///
+/// Quem já definiu qualquer uma delas manda (não sobrescrevemos).
 #[cfg(target_os = "linux")]
 fn contornar_webkit_wayland() {
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        // Antes de qualquer thread do GTK existir.
-        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+    for (chave, valor) in [
+        ("WEBKIT_DISABLE_DMABUF_RENDERER", "1"),
+        ("WEBKIT_DISABLE_COMPOSITING_MODE", "1"),
+    ] {
+        if std::env::var_os(chave).is_none() {
+            unsafe { std::env::set_var(chave, valor) };
+        }
     }
 }
 

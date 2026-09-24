@@ -45,6 +45,13 @@ fi
 tui="$pasta/orchestrator"
 app="$pasta/orchestrator-desktop"
 
+# WebKitGTK no Wayland (Fedora/Nobara, AMD): a partir do 2.52 a janela abre
+# toda preta se a composição acelerada ficar ligada. O binário já define isto
+# por conta própria; aqui é reforço para quem roda pelo launcher. Não
+# sobrescreve quem já definiu.
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
+
 tem_tela() {
   [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]
 }
