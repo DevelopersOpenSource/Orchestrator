@@ -44,15 +44,23 @@ export function Remoto({ aberta, fechar }: { aberta: boolean; fechar: () => void
     setOcupado(true);
     setAviso("abrindo o túnel…");
     try {
-      const url = await nucleo.remotoLigar();
+      await nucleo.remotoLigar();
       setAviso("");
-      setStatus((s) => ({ senhaDefinida: s?.senhaDefinida ?? true, url }));
+      await recarregar();
     } catch (e) {
       setAviso(String(e));
     } finally {
       setOcupado(false);
     }
   };
+
+  // Recarrega o status a cada 4s enquanto aberto (para ver acessos novos).
+  useEffect(() => {
+    if (!aberta) return;
+    const id = window.setInterval(() => void recarregar(), 4000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberta]);
 
   const desligar = async () => {
     setOcupado(true);
@@ -109,11 +117,12 @@ export function Remoto({ aberta, fechar }: { aberta: boolean; fechar: () => void
             <strong>2. Túnel</strong>
             {status?.url ? (
               <>
+                <p className="dica">Link completo (guarde — o caminho é secreto; sem ele dá 404):</p>
                 <div className="remoto-url">
-                  <a href={status.url} target="_blank" rel="noreferrer">
-                    {status.url}
+                  <a href={status.url + status.caminho} target="_blank" rel="noreferrer">
+                    {status.url + status.caminho}
                   </a>
-                  <button className="botao-leve" onClick={() => copiar(status.url!)}>
+                  <button className="botao-leve" onClick={() => copiar(status.url! + status.caminho)}>
                     {copiado ? "copiado" : "copiar"}
                   </button>
                 </div>
@@ -131,6 +140,21 @@ export function Remoto({ aberta, fechar }: { aberta: boolean; fechar: () => void
               </>
             )}
           </div>
+
+          {status && status.acessos.length > 0 && (
+            <div className="remoto-bloco">
+              <strong>Acessos recentes</strong>
+              <ul className="remoto-acessos">
+                {status.acessos.slice(0, 12).map((a, idx) => (
+                  <li key={idx} className={a.ok ? "ok" : "falha"}>
+                    <span>{a.ok ? "entrou" : "senha errada"}</span>
+                    <span className="mono">{a.ip}</span>
+                    <span className="dica">{new Date(a.ms).toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {aviso && <p className="dica">{aviso}</p>}
         </div>

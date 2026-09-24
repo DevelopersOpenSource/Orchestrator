@@ -88,10 +88,20 @@ export interface SshHost {
   global: boolean;
 }
 
+export interface AcessoRemoto {
+  ms: number;
+  ip: string;
+  ok: boolean;
+}
+
 export interface RemotoStatus {
   senhaDefinida: boolean;
-  /** URL pública do túnel enquanto ligado; `null` quando desligado. */
+  /** URL base do túnel enquanto ligado; `null` quando desligado. */
   url: string | null;
+  /** Caminho secreto da tela de login (`/entrar/<token>`); com a URL forma o link. */
+  caminho: string;
+  /** Acessos recentes (ok/falha, hora, IP), para você ver quem tentou entrar. */
+  acessos: AcessoRemoto[];
 }
 
 export interface EntradaArquivo {

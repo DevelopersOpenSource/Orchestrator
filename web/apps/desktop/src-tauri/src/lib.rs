@@ -856,16 +856,23 @@ fn remoto_definir_senha(nucleo: State<'_, Nucleo>, senha: String) -> Result<(), 
 #[serde(rename_all = "camelCase")]
 struct RemotoStatus {
     senha_definida: bool,
+    /// URL base do túnel enquanto ligado (`null` desligado).
     url: Option<String>,
+    /// Caminho SECRETO da tela de login (`/entrar/<token>`) — junto com a URL
+    /// forma o link completo. Quem não tem o token recebe 404.
+    caminho: String,
+    /// Histórico recente de acessos (ok/falha, hora, IP), para o dono ver.
+    acessos: Vec<remoto::Evento>,
 }
 
 #[tauri::command]
 fn remoto_status(nucleo: State<'_, Nucleo>, remoto: State<'_, remoto::Remoto>) -> Result<RemotoStatus, String> {
-    let senha_definida = {
+    let (senha_definida, caminho) = {
         let e = travar(&nucleo)?;
-        remoto::senha_definida(&e.store)
+        (remoto::senha_definida(&e.store), format!("/entrar/{}", remoto::gate_token(&e.store)))
     };
-    Ok(RemotoStatus { senha_definida, url: remoto.url() })
+    let acessos = remoto.protecao().lock().map(|p| p.eventos()).unwrap_or_default();
+    Ok(RemotoStatus { senha_definida, url: remoto.url(), caminho, acessos })
 }
 
 /// Liga o túnel Cloudflare (sobe o servidor local se preciso) e devolve a URL.

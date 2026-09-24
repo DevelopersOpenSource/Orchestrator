@@ -24,6 +24,7 @@ tauri-plugin-single-instance = "2.4"
 orchestrator-core = { path = "../../../../crates/core" }
 orchestrator-engine = { path = "../../../../crates/engine" }
 orchestrator-memory = { path = "../../../../crates/memory" }
+orchestrator-notify = { path = "../../../../crates/notify" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
