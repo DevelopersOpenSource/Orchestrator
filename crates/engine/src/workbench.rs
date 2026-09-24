@@ -347,6 +347,9 @@ impl Engine {
             }
         }
         app.restore_chat();
+        // Põe o nível de permissão do dono no ambiente já no começo, para o
+        // chat e as CLIs herdarem sem depender de o dono reabrir a aba.
+        unsafe { std::env::set_var("ORCHESTRATOR_PERM_MODE", app.perm_mode()) };
         app.reload();
         app
     }
@@ -2079,8 +2082,41 @@ impl Engine {
         ];
         if managed {
             envs.push(("ORCHESTRATOR_AUTONOMOUS".to_string(), "1".to_string()));
+            // Nível de permissão do dono (bypass/padrão/autônomo) — só nas CLIs
+            // que o ORQUESTRADOR abre (managed). CLI manual (o dono digitando)
+            // não é governada por este nível.
+            envs.push(("ORCHESTRATOR_PERM_MODE".to_string(), self.perm_mode()));
         }
         envs
+    }
+
+    /// O nível de permissão que o dono escolheu (aba Configurações). Guardado
+    /// em `ui_state perm.mode`; padrão "padrao". Só o dono muda.
+    pub fn perm_mode(&self) -> String {
+        self.store
+            .ui_get("perm.mode")
+            .ok()
+            .flatten()
+            .filter(|m| matches!(m.as_str(), "bypass" | "padrao" | "autonomo"))
+            .unwrap_or_else(|| "padrao".to_string())
+    }
+
+    /// Troca o nível de permissão (só o dono, pela aba Configurações). Além de
+    /// guardar, põe no ambiente do processo para que o chat e as CLIs abertas a
+    /// seguir já herdem — o gate/hook lê `ORCHESTRATOR_PERM_MODE`.
+    pub fn set_perm_mode(&mut self, modo: &str) {
+        let modo = match modo.trim() {
+            "bypass" | "autonomo" => modo.trim(),
+            _ => "padrao",
+        };
+        let _ = self.store.ui_set("perm.mode", modo);
+        // set_var afeta o processo e os filhos que ele abrir depois.
+        unsafe { std::env::set_var("ORCHESTRATOR_PERM_MODE", modo) };
+        self.status = match modo {
+            "bypass" => "modo BYPASS ligado — a trava libera tudo (você assumiu o risco)".into(),
+            "autonomo" => "modo AUTÔNOMO — a IA reduz a própria permissão; tudo arriscado espera você".into(),
+            _ => "modo PADRÃO — catastrófico bloqueia, arriscado pausa para você".into(),
+        };
     }
 
     /// Como abrir uma CLI num card.

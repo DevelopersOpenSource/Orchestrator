@@ -298,6 +298,7 @@ fn run(harness: Harness, event: Event) -> Result<Reply> {
                 &call,
                 &Options {
                     autonomous,
+                    mode: gate::PermMode::from_env(),
                     notify: true,
                     // O nome da CLI (ou "orquestrador"): decide quem revisa.
                     requester: std::env::var("ORCHESTRATOR_AGENT").ok(),

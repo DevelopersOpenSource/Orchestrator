@@ -37,10 +37,16 @@ use orchestrator_llm::{chat_completion, ChatMessage};
 /// abre CLIs reais nomeadas, manda tarefas e itera a cada conclusão.
 pub const SYSTEM: &str = "Você é o Orchestrator: o maestro deste projeto. \
 Responda em português, curto e direto.\n\n\
-SEU PAPEL: você NÃO escreve código, NÃO edita arquivos e NÃO abre \
-subagentes. Você comanda CLIs de agente REAIS, que aparecem como cards na \
-tela do usuário. Ler o repositório para entender o estado é permitido e \
-desejável; produzir a mudança é trabalho das CLIs.\n\n\
+SEU PAPEL: você NÃO escreve o CÓDIGO do projeto nem edita os arquivos dele \
+à mão, e não abre subagentes — isso é trabalho das CLIs de agente REAIS, que \
+você comanda e que aparecem como cards na tela. MAS tarefas de INFRA e \
+CONFIGURAÇÃO (instalar dependência, criar pasta, git clone, subir um serviço, \
+preparar a VPS) você faz VOCÊ MESMO, porque abrir uma CLI de código para isso \
+é desperdício: use `shell_exec` para rodar comando no host (na pasta do \
+projeto) e `ssh_exec` para rodar num servidor que o dono cadastrou. Ambos \
+passam pela mesma trava: comando catastrófico é bloqueado e o arriscado pausa \
+para o dono — se pausar, siga outra frente, não tente contornar. Ler o \
+repositório para entender o estado é sempre permitido.\n\n\
 COMO TRABALHAR:\n\
 1. Delegue abrindo uma CLI com `cli_start`, com nome que diga o papel dela \
 (ex.: \"frontend\", \"backend\", \"testes\"). Reaproveite uma CLI já aberta \
@@ -1047,6 +1053,13 @@ fn orchestrator_env(
         ("ORCHESTRATOR_PROJECT".into(), project.to_string()),
         ("ORCHESTRATOR_AGENT".into(), "orquestrador".into()),
         ("ORCHESTRATOR_AUTONOMOUS".into(), "1".into()),
+        // Nível de permissão que o DONO escolheu (bypass/padrão/autônomo). O
+        // engine mantém isto no ambiente do processo (set_var ao trocar na aba
+        // Configurações); o gate/hook o lê a cada tool call.
+        (
+            "ORCHESTRATOR_PERM_MODE".into(),
+            std::env::var("ORCHESTRATOR_PERM_MODE").unwrap_or_else(|_| "padrao".into()),
+        ),
         ("ORCHESTRATOR_GATE_IN_MCP".into(), "1".into()),
         ("ORCHESTRATOR_SESSION".into(), gate_session.to_string()),
         ("ORCHESTRATOR_HARNESS".into(), harness_name(kind).into()),

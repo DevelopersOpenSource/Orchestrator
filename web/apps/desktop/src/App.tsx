@@ -11,6 +11,7 @@ import { Sandbox } from "./componentes/Sandbox";
 import { Ide } from "./componentes/Ide";
 import { Ssh } from "./componentes/Ssh";
 import { Remoto } from "./componentes/Remoto";
+import { Configuracoes } from "./componentes/Configuracoes";
 import { open as escolherPasta } from "@tauri-apps/plugin-dialog";
 
 type Vista = "workbench" | "decisoes" | "sandbox" | "ide";
@@ -98,6 +99,7 @@ export function App() {
   const [modelos, setModelos] = useState(false);
   const [ssh, setSsh] = useState(false);
   const [remoto, setRemoto] = useState(false);
+  const [config, setConfig] = useState(false);
   /** Menu do botão direito num projeto ou workspace da lateral. */
   const [menu, setMenu] = useState<{ tipo: "projeto" | "workspace"; alvo: string; indice: number; x: number; y: number } | null>(null);
   const [avisoLateral, setAvisoLateral] = useState("");
@@ -235,6 +237,9 @@ export function App() {
           </button>
           <button className="botao" onClick={() => setMemoria(true)} title="Memória (F4)">
             Memória
+          </button>
+          <button className="botao" onClick={() => setConfig(true)} title="Configurações">
+            Config
           </button>
           <button
             className="botao"
@@ -485,6 +490,7 @@ export function App() {
       <Modelos aberta={modelos} fechar={() => setModelos(false)} foto={foto} />
       <Ssh aberta={ssh} fechar={() => setSsh(false)} projeto={foto.projeto} />
       <Remoto aberta={remoto} fechar={() => setRemoto(false)} />
+      <Configuracoes aberta={config} fechar={() => setConfig(false)} foto={foto} />
       {menu && (
         <div className="menu-contexto" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
           <button onClick={() => void trocarPasta(menu.tipo, menu.alvo, menu.indice)}>Alterar pasta…</button>

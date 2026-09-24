@@ -106,6 +106,8 @@ struct Foto {
     provedor: String,
     modelo: String,
     postura: String,
+    /// Nível de permissão do orquestrador: "bypass" | "padrao" | "autonomo".
+    perm_modo: String,
     status: String,
     avisos: Vec<String>,
     decisoes: Vec<Decisao>,
@@ -225,6 +227,7 @@ fn foto(e: &Engine) -> Foto {
         provedor: e.chat.provider.name.clone(),
         modelo: e.chat_model.clone(),
         postura: e.posture.label().to_string(),
+        perm_modo: e.perm_mode(),
         status: e.status.clone(),
         avisos: e.notices.clone(),
         decisoes: e
@@ -846,6 +849,15 @@ fn memoria_api() -> String {
 // ------------------------------------------------------ acesso remoto
 
 /// Define a senha do acesso remoto (guardada com hash+sal, nunca em texto).
+/// Troca o nível de permissão do orquestrador (só o dono, pela aba
+/// Configurações): "bypass" | "padrao" | "autonomo".
+#[tauri::command]
+fn definir_perm_modo(nucleo: State<'_, Nucleo>, modo: String) -> Result<String, String> {
+    let mut e = travar(&nucleo)?;
+    e.set_perm_mode(&modo);
+    Ok(e.status.clone())
+}
+
 #[tauri::command]
 fn remoto_definir_senha(nucleo: State<'_, Nucleo>, senha: String) -> Result<(), String> {
     let e = travar(&nucleo)?;
@@ -1052,6 +1064,7 @@ pub fn run() {
             ssh_salvar,
             iniciar_sandbox,
             parar_sandbox,
+            definir_perm_modo,
             remoto_definir_senha,
             remoto_status,
             remoto_ligar,

@@ -62,6 +62,7 @@ impl McpGate {
                 .unwrap_or_else(|| format!("mcp-{}", std::process::id())),
             options: gate::Options {
                 autonomous: std::env::var("ORCHESTRATOR_AUTONOMOUS").ok().as_deref() == Some("1"),
+                mode: gate::PermMode::from_env(),
                 notify: true,
                 requester: std::env::var("ORCHESTRATOR_AGENT").ok(),
             },
@@ -156,6 +157,17 @@ fn tools_list() -> Value {
                         "command": { "type": "string", "description": "Comando shell a rodar lá." }
                     },
                     "required": []
+                }
+            },
+            {
+                "name": "shell_exec",
+                "description": "Roda um comando shell no HOST (a máquina do dono), na pasta do projeto ativo, e devolve a saída — é assim que você configura o ambiente/infra por conta própria (instalar dependência, criar pasta, git clone, subir serviço), sem precisar de uma CLI de agente para tarefas que são só de terminal. Passa pela MESMA trava de segurança: comando catastrófico (rm -rf, mkfs...) é BLOQUEADO, e o arriscado PAUSA para o dono decidir — não tente contornar; se pausar, siga outra frente. Prefira comandos de leitura antes de mudar algo. Prazo de 120s. Para CÓDIGO do projeto, continue delegando às CLIs; use isto para infra/configuração.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string", "description": "Comando shell a rodar no host, na pasta do projeto." }
+                    },
+                    "required": ["command"]
                 }
             },
             {
@@ -490,6 +502,7 @@ fn tools_call(
             )
         }
         "ssh_exec" => ssh_exec(store, &project_of(&args), &args)?,
+        "shell_exec" => shell_exec(&args)?,
         "list_memories" => {
             let project = project_of(&args);
             let kind = kind_arg(&args)?;
@@ -896,6 +909,40 @@ fn buscar_memoria(
     Ok((achados, false))
 }
 
+/// `shell_exec`: roda um comando no HOST, na pasta do projeto ativo. A trava
+/// (hook/gate) já barrou o catastrófico e pausou o arriscado ANTES de chegar
+/// aqui — este handler só executa o que foi liberado.
+fn shell_exec(args: &Value) -> Result<String, (i64, String)> {
+    let command = str_arg(args, "command")?;
+    let dir = std::env::var_os("ORCHESTRATOR_WORKDIR")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+    let out = std::process::Command::new("timeout")
+        .arg("120")
+        .arg("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(&dir)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| (-32000, format!("não consegui rodar o comando: {e}")))?;
+    let mut texto = String::from_utf8_lossy(&out.stdout).to_string();
+    let err = String::from_utf8_lossy(&out.stderr);
+    if !err.trim().is_empty() {
+        texto.push_str(&format!("\n[stderr]\n{err}"));
+    }
+    let linhas: Vec<&str> = texto.lines().collect();
+    let corte = linhas.len().saturating_sub(80);
+    let marca = match out.status.code() {
+        Some(0) => "✔".to_string(),
+        Some(124) => "✖ passou de 120s e foi cortado".to_string(),
+        Some(c) => format!("✖ saiu com código {c}"),
+        None => "✖ interrompido".to_string(),
+    };
+    Ok(format!("host:{} $ {command}  {marca}\n{}", dir.display(), linhas[corte..].join("\n")))
+}
+
 /// `ssh_exec`: roda um comando num servidor cadastrado pelo dono para o
 /// projeto (sem `host`, lista os cadastrados).
 fn ssh_exec(store: &MemoryStore, project: &str, args: &Value) -> Result<String, (i64, String)> {
@@ -1076,6 +1123,7 @@ mod tests {
                 "retrieve_memory",
                 "store_memory",
                 "ssh_exec",
+                "shell_exec",
                 "list_memories",
                 "log_decision",
                 "permission_prompt",
@@ -1199,7 +1247,7 @@ mod tests {
         let s = store();
         let g = McpGate {
             session_id: "chat-1".into(),
-            options: gate::Options { autonomous: true, notify: false, requester: None },
+            options: gate::Options { autonomous: true, mode: gate::PermMode::Padrao, notify: false, requester: None },
         };
         let chamar = |nome: &str| -> Value {
             let req = json!({"jsonrpc":"2.0","id":1,"method":"tools/call",

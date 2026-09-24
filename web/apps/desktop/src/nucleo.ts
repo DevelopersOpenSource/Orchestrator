@@ -66,6 +66,8 @@ export interface Foto {
   provedor: string;
   modelo: string;
   postura: string;
+  /** Nível de permissão do orquestrador: "bypass" | "padrao" | "autonomo". */
+  permModo: string;
   status: string;
   avisos: string[];
   decisoes: Decisao[];
@@ -160,6 +162,8 @@ export const nucleo = {
   /** Sem `url`, só sobe o container; com `docker`, deixa rodar containers dentro. */
   iniciarSandbox: (nome: string, url: string, docker: boolean) => invoke<string>("iniciar_sandbox", { nome, url, docker }),
   pararSandbox: (nome: string) => invoke<string>("parar_sandbox", { nome }),
+  /** Troca o nível de permissão do orquestrador (bypass/padrao/autonomo). */
+  definirPermModo: (modo: string) => invoke<string>("definir_perm_modo", { modo }),
   remotoDefinirSenha: (senha: string) => invoke<void>("remoto_definir_senha", { senha }),
   remotoStatus: () => invoke<RemotoStatus>("remoto_status"),
   /** Sobe o servidor local (loopback) se preciso e abre o túnel; devolve a URL. */

@@ -46,11 +46,56 @@ pub struct ToolCall<'a> {
     pub project: &'a str,
 }
 
+/// Nível de permissão que o DONO escolhe (na aba Configurações do app).
+/// Só o dono muda — a IA nunca sobe o próprio nível.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PermMode {
+    /// O dono assume TODO o risco: a trava libera tudo (nem deny nem ask).
+    /// Como um `sudo`/`--dangerously-skip-permissions`. Só com o dono por
+    /// perto, no controle.
+    Bypass,
+    /// Equilíbrio (padrão): catastrófico bloqueia, arriscado pausa; o
+    /// orquestrador decide os pedidos de CLI de que tem certeza.
+    #[default]
+    Padrao,
+    /// Sem o dono por perto: a IA REDUZ a própria permissão — nada arriscado
+    /// é auto-aprovado, tudo que casa `ask` espera a decisão do dono.
+    Autonomo,
+}
+
+impl PermMode {
+    /// Lê de uma string (`ORCHESTRATOR_PERM_MODE`, ui_state `perm.mode`).
+    pub fn from_str_ou_padrao(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "bypass" => PermMode::Bypass,
+            "autonomo" | "autônomo" | "autonomous" => PermMode::Autonomo,
+            _ => PermMode::Padrao,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PermMode::Bypass => "bypass",
+            PermMode::Padrao => "padrao",
+            PermMode::Autonomo => "autonomo",
+        }
+    }
+
+    /// Lê do ambiente (`ORCHESTRATOR_PERM_MODE`).
+    pub fn from_env() -> Self {
+        std::env::var("ORCHESTRATOR_PERM_MODE")
+            .map(|v| PermMode::from_str_ou_padrao(&v))
+            .unwrap_or_default()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Options {
     /// Postura autônoma (`ORCHESTRATOR_AUTONOMOUS=1`): a trava é a única
     /// autoridade e libera explicitamente o que não casou regra.
     pub autonomous: bool,
+    /// Nível de permissão escolhido pelo dono (bypass/padrão/autônomo).
+    pub mode: PermMode,
     /// Avisar o dono por notificação do desktop quando algo pausar.
     pub notify: bool,
     /// Quem está pedindo (`ORCHESTRATOR_AGENT`): o nome da CLI, ou
@@ -96,6 +141,16 @@ pub fn decide(store: &MemoryStore, call: &ToolCall, opts: &Options) -> Result<De
     let action = format!("{tool_name} {tool_input}");
     let is_cli_tool =
         tool_name.starts_with(CLI_TOOL_PREFIX) || tool_name.starts_with(UI_TOOL_PREFIX);
+
+    // MODO BYPASS: o dono assumiu TODO o risco e está no controle. A trava
+    // libera tudo (nem deny, nem ask, nem consulta obrigatória) — mas registra
+    // cada ação, para o histórico. Este modo só existe quando o DONO o ligou na
+    // aba Configurações; a IA nunca o escolhe (ela lê o env, não o escreve).
+    if opts.mode == PermMode::Bypass {
+        let _ = store.log_decision(project, session_id, &action, "allowed", "modo bypass (dono assumiu o risco)");
+        return Ok(Decision::Allow("Liberado — modo bypass (o dono assumiu o risco).".to_string()));
+    }
+
     let verdict = evaluate(store, project, tool_name, tool_input);
 
     // Obrigação do dono: nada que altere o projeto antes de consultar a
@@ -129,7 +184,7 @@ pub fn decide(store: &MemoryStore, call: &ToolCall, opts: &Options) -> Result<De
         Verdict::Ask {
             rule_title,
             owner_only: false,
-        } if opts.autonomous && is_cli_tool => {
+        } if opts.mode == PermMode::Padrao && opts.autonomous && is_cli_tool => {
             let reason = format!(
                 "Liberado no modo autônomo: orquestrar CLIs é a função do \
                  orquestrador (regra \"{rule_title}\" não pausa tools cli_*)."
@@ -147,8 +202,13 @@ pub fn decide(store: &MemoryStore, call: &ToolCall, opts: &Options) -> Result<De
             // dono pediu e só escala o que for crítico demais ou que ele não
             // saiba. `owner-regex` e os pedidos do próprio orquestrador ficam
             // com o dono.
+            // No modo AUTÔNOMO (dono ausente) a IA reduz a própria permissão:
+            // nada arriscado é auto-decidido pelo orquestrador — tudo que casa
+            // `ask` espera a decisão do DONO. O atalho "o orquestrador decide
+            // o pedido da CLI" só vale no modo PADRÃO.
             let requester = opts.requester.as_deref().map(str::trim).unwrap_or("");
             let do_orquestrador = !owner_only
+                && opts.mode == PermMode::Padrao
                 && opts.autonomous
                 && !requester.is_empty()
                 && requester != ORCHESTRATOR_AGENT;
@@ -296,6 +356,7 @@ fn is_our_tool(name: &str) -> bool {
         || name.starts_with("decision_")
         || name == "ask_owner"
         || name == "ssh_exec"
+        || name == "shell_exec"
 }
 
 /// O nome de uma ferramenta no formato das regras e das listas daqui (o do
@@ -378,11 +439,34 @@ mod tests {
     }
 
     // Sem notificação de desktop nos testes.
-    const AUTO: Options = Options { autonomous: true, notify: false, requester: None };
-    const PERGUNTA: Options = Options { autonomous: false, notify: false, requester: None };
+    const AUTO: Options = Options { autonomous: true, mode: PermMode::Padrao, notify: false, requester: None };
+    const PERGUNTA: Options = Options { autonomous: false, mode: PermMode::Padrao, notify: false, requester: None };
 
     fn cli(nome: &str) -> Options {
-        Options { autonomous: true, notify: false, requester: Some(nome.into()) }
+        Options { autonomous: true, mode: PermMode::Padrao, notify: false, requester: Some(nome.into()) }
+    }
+
+    #[test]
+    fn bypass_libera_tudo_ate_o_catastrofico() {
+        let s = store();
+        let bypass = Options { autonomous: true, mode: PermMode::Bypass, notify: false, requester: None };
+        // Nem precisa consultar a memória, nem regra deny para nada.
+        let rm = call("Bash", r#"{"command":"rm -rf /"}"#);
+        assert!(matches!(decide(&s, &rm, &bypass).unwrap(), Decision::Allow(_)));
+    }
+
+    #[test]
+    fn autonomo_nao_auto_aprova_o_arriscado_de_cli_manda_pro_dono() {
+        let s = store();
+        // No modo AUTÔNOMO, o pedido arriscado de uma CLI vai pro DONO (não é
+        // auto-decidido pelo orquestrador como no PADRÃO).
+        let backend = Options { autonomous: true, mode: PermMode::Autonomo, notify: false, requester: Some("backend".into()) };
+        decide(&s, &call(RETRIEVE_TOOL, "{}"), &backend).unwrap();
+        let migrar = call("Bash", r#"{"command":"sqlx migrate run"}"#);
+        let d = decide(&s, &migrar, &backend).unwrap();
+        assert!(matches!(&d, Decision::Deny(_)), "{d:?}");
+        let pendentes = s.list_pending_decisions(true).unwrap();
+        assert!(pendentes[0].is_for_owner(), "no autônomo o arriscado é do dono: {pendentes:?}");
     }
 
     #[test]

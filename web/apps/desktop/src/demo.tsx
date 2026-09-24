@@ -75,6 +75,7 @@ const foto: Foto = {
   provedor: "claude",
   modelo: "opus",
   postura: "autônomo",
+  permModo: "padrao",
   status: "CLI \"frontend\" aberta na workspace 1 (claude)",
   avisos: [],
   decisoes: [

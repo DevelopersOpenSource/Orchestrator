@@ -262,3 +262,13 @@ button.chip:hover { color: var(--tx); border-color: var(--tx3); }
 .remoto-acessos li { display: grid; grid-template-columns: 90px 1fr auto; gap: 8px; align-items: center; font-size: 12px; padding: 4px 8px; border-radius: 6px; background: var(--s1); }
 .remoto-acessos li.falha { color: var(--er); }
 .remoto-acessos li.ok > span:first-child { color: #4ec27a; }
+
+.config { width: min(620px, 100%); max-height: 100%; }
+.config-corpo { padding: 14px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.config-modos { display: flex; flex-direction: column; gap: 8px; }
+.config-modo { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--bd2); border-radius: 10px; background: var(--s1); color: var(--tx); cursor: pointer; }
+.config-modo:hover { border-color: var(--ac); }
+.config-modo.ativo { border-color: var(--ac); background: var(--s2); }
+.config-modo.perigo.ativo { border-color: var(--er); }
+.config-modo-topo { display: flex; align-items: center; gap: 10px; }
+.config-atual { margin-left: auto; font-size: 12px; color: var(--ac); }
