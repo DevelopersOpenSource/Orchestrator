@@ -121,6 +121,11 @@ pub struct SandboxSpec {
     pub mount: Mount,
     /// Porta do host que expõe o CDP (0 = escolhe uma livre).
     pub port: u16,
+    /// Deixa rodar containers DENTRO da sandbox (`docker`/`podman`, compose)
+    /// — para testar projeto que sobe banco, fila etc. em container. Troca o
+    /// "sem capability nenhuma" por `--privileged`, que no podman ROOTLESS
+    /// continua limitado ao usuário do dono (não vira root da máquina).
+    pub containers: bool,
 }
 
 impl SandboxSpec {
@@ -130,6 +135,7 @@ impl SandboxSpec {
             workdir: None,
             mount: Mount::default(),
             port: 0,
+            containers: false,
         }
     }
 }
@@ -202,11 +208,6 @@ pub fn run_args(spec: &SandboxSpec, port: u16) -> Vec<String> {
         "--rm".into(),
         "--name".into(),
         container_name(&spec.name),
-        // A sandbox não precisa de privilégio nenhum.
-        "--security-opt".into(),
-        "no-new-privileges".into(),
-        "--cap-drop".into(),
-        "ALL".into(),
         // Memória compartilhada do Chromium.
         "--shm-size".into(),
         "512m".into(),
@@ -214,6 +215,18 @@ pub fn run_args(spec: &SandboxSpec, port: u16) -> Vec<String> {
         "-p".into(),
         format!("127.0.0.1:{port}:{CDP_PORT}"),
     ];
+    if spec.containers {
+        // Container dentro do container precisa de user namespace e /dev/fuse.
+        args.push("--privileged".into());
+        args.push("--device".into());
+        args.push("/dev/fuse".into());
+    } else {
+        // A sandbox comum não precisa de privilégio nenhum.
+        args.push("--security-opt".into());
+        args.push("no-new-privileges".into());
+        args.push("--cap-drop".into());
+        args.push("ALL".into());
+    }
     // A marca vai sempre, inclusive sem pasta montada: é ela que diz que a
     // ausência dos outros labels é informação, e não ignorância.
     args.push("--label".into());

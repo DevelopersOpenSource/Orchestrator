@@ -137,6 +137,11 @@ pub fn evaluate(store: &MemoryStore, project: &str, tool_name: &str, tool_input:
             ask = Some((rule.title.clone(), false));
         }
     }
+    if ask.is_none() {
+        if let Some(fora) = fora_da_pasta(store, project, tool_name, tool_input) {
+            ask = Some((format!("acesso fora da pasta do projeto: {fora}"), true));
+        }
+    }
     match ask {
         Some((rule_title, owner_only)) => Verdict::Ask {
             rule_title,
@@ -146,8 +151,115 @@ pub fn evaluate(store: &MemoryStore, project: &str, tool_name: &str, tool_input:
     }
 }
 
+/// Chave em `ui_state` com as pastas que o dono liberou para um projeto
+/// (uma por linha), além da própria pasta do projeto.
+pub fn allowed_dirs_key(project: &str) -> String {
+    format!("pastas.autorizadas.{project}")
+}
+
+/// Caminhos que um comando pode citar sem ser "fora do projeto": binários
+/// do sistema, descarte de saída, temporários.
+const LIVRES: &[&str] = &[
+    "/dev/null", "/dev/stdout", "/dev/stderr", "/dev/stdin", "/dev/tty", "/tmp", "/usr", "/bin",
+    "/sbin", "/lib", "/lib64", "/proc/self",
+];
+
+/// Resolve `.`/`..` sem tocar no disco (o caminho pode nem existir ainda).
+fn normalizar(p: &std::path::Path) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut out = std::path::PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// O primeiro caminho citado pela tool que cai FORA da pasta do projeto
+/// (`ORCHESTRATOR_WORKDIR`) e das pastas que o dono autorizou.
+///
+/// Sem `ORCHESTRATOR_WORKDIR` (uso fora do Orchestrator) não há confinamento.
+/// Arquivo por tool (Read/Write/Edit/Glob/Grep) é exato; no Bash é
+/// heurístico — pega caminhos absolutos, `~/...` e `../...` citados no
+/// comando, não um `cd` feito por variável.
+pub fn fora_da_pasta(store: &MemoryStore, project: &str, tool_name: &str, tool_input: &str) -> Option<String> {
+    let raiz = std::path::PathBuf::from(std::env::var_os("ORCHESTRATOR_WORKDIR")?);
+    let extra = store.ui_get(&allowed_dirs_key(project)).ok().flatten().unwrap_or_default();
+    caminho_fora(&raiz, &extra, tool_name, tool_input)
+}
+
+/// O miolo de [`fora_da_pasta`], sem ler ambiente nem banco (testável).
+fn caminho_fora(raiz: &std::path::Path, extra: &str, tool_name: &str, tool_input: &str) -> Option<String> {
+    use std::path::{Path, PathBuf};
+    let mut permitidas = vec![normalizar(raiz)];
+    if let Ok(c) = raiz.canonicalize() {
+        permitidas.push(c);
+    }
+    permitidas.extend(extra.lines().filter(|l| !l.trim().is_empty()).map(|l| normalizar(Path::new(l.trim()))));
+    let input: serde_json::Value = serde_json::from_str(tool_input).ok()?;
+    let campo = |k: &str| input.get(k).and_then(|v| v.as_str()).map(str::to_string);
+    let candidatos: Vec<String> = match tool_name {
+        "Read" | "Write" | "Edit" | "MultiEdit" => campo("file_path").into_iter().collect(),
+        "NotebookEdit" => campo("notebook_path").into_iter().collect(),
+        "Glob" | "Grep" | "LS" => campo("path").into_iter().collect(),
+        "Bash" => campo("command")
+            .map(|c| {
+                c.split(|ch: char| ch.is_whitespace() || ";|&<>()'\"=`".contains(ch))
+                    .filter(|t| t.starts_with('/') || t.starts_with("~/") || t == &"~" || t.starts_with("../"))
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    for c in candidatos {
+        let bruto = match (c.strip_prefix('~'), &home) {
+            (Some(rest), Some(h)) => h.join(rest.trim_start_matches('/')),
+            _ if c.starts_with("../") => raiz.join(&c),
+            _ => PathBuf::from(&c),
+        };
+        let p = normalizar(&bruto);
+        // No Bash, "/api/users" num grep não é caminho: só conta o que começa
+        // numa pasta que existe de verdade na raiz (/home, /etc, /var...).
+        if tool_name == "Bash" && c.starts_with('/') {
+            let topo: PathBuf = p.components().take(2).collect();
+            if !topo.exists() {
+                continue;
+            }
+        }
+        let livre = LIVRES.iter().any(|l| p == Path::new(l) || p.starts_with(l));
+        if !livre && !permitidas.iter().any(|r| p.starts_with(r)) {
+            return Some(p.display().to_string());
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn files_outside_the_project_need_the_owner() {
+        let raiz = std::path::Path::new("/home/eu/projeto");
+        let fora = |tool: &str, input: &str| super::caminho_fora(raiz, "", tool, input);
+        assert_eq!(fora("Read", r#"{"file_path":"/home/eu/projeto/src/a.rs"}"#), None);
+        assert_eq!(fora("Edit", r#"{"file_path":"/home/eu/projeto/../outro/b.rs"}"#).as_deref(), Some("/home/eu/outro/b.rs"));
+        assert!(fora("Read", r#"{"file_path":"/etc/passwd"}"#).is_some());
+        // Bash: binário do sistema e /dev/null são livres; texto que só
+        // parece caminho ("/api/users") não conta.
+        assert_eq!(fora("Bash", r#"{"command":"/usr/bin/env node x.js > /dev/null"}"#), None);
+        assert_eq!(fora("Bash", r#"{"command":"grep -r /api/users src"}"#), None);
+        assert!(fora("Bash", r#"{"command":"cat /etc/hosts"}"#).is_some());
+        assert!(fora("Bash", r#"{"command":"cd ../.. && ls"}"#).is_some());
+        // Pasta liberada pelo dono deixa de pedir.
+        assert_eq!(super::caminho_fora(raiz, "/etc\n", "Read", r#"{"file_path":"/etc/hosts"}"#), None);
+    }
+
     use super::*;
 
     fn store_with_rules() -> MemoryStore {

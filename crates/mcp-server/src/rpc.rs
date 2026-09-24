@@ -132,7 +132,7 @@ fn tools_list() -> Value {
             },
             {
                 "name": "store_memory",
-                "description": "Grava uma memória SUA neste projeto (fica com o seu nome como autor; não vira regra do dono nem memória global). Use para o que aprendeu e vale lembrar: convenção, decisão, armadilha, preferência do dono. Passa por remoção de segredos.",
+                "description": "Grava uma memória SUA (fica com o seu nome como autor; nunca vira regra do dono). Use para o que aprendeu e vale lembrar: convenção, decisão, armadilha, preferência do dono. Passa por remoção de segredos. Com global=true ela vale em TODO projeto — use para o que aprendeu sobre o DONO (preferências, jeito de trabalhar, o que ele cobra), não para detalhe deste código; só funciona se o dono liberou (/memoria-global on).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -140,9 +140,22 @@ fn tools_list() -> Value {
                         "kind": { "type": "string", "enum": ["security", "architecture", "practice", "syntax", "decision"] },
                         "title": { "type": "string" },
                         "body": { "type": "string" },
-                        "priority": { "type": "integer", "default": 0 }
+                        "priority": { "type": "integer", "default": 0 },
+                        "global": { "type": "boolean", "description": "Vale em todo projeto (preferência do dono). Padrão: false." }
                     },
                     "required": ["kind", "title", "body"]
+                }
+            },
+            {
+                "name": "ssh_exec",
+                "description": "Roda um comando num servidor (VPS) que o DONO cadastrou para este projeto (Conexões SSH no app), com a chave dele e sem pedir senha. Sem `host`, lista os servidores cadastrados. O comando roda com o usuário cadastrado (muitas vezes root): seja cuidadoso, prefira comandos de leitura antes de mudar algo, e não rode nada destrutivo sem o dono ter pedido. Prazo de 120s por comando.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "host": { "type": "string", "description": "Nome do servidor como o dono cadastrou." },
+                        "command": { "type": "string", "description": "Comando shell a rodar lá." }
+                    },
+                    "required": []
                 }
             },
             {
@@ -456,11 +469,13 @@ fn tools_call(
             // Quem grava por esta tool é sempre uma IA: fica no projeto, com o
             // nome dela, e nunca como regra do dono nem como global.
             let author = std::env::var("ORCHESTRATOR_AGENT").unwrap_or_else(|_| "IA".to_string());
-            let m = store
-                .add(orchestrator_memory::store::NewMemory::agent(
-                    &project, &author, kind, title, body, priority,
-                ))
-                .map_err(|e| (-32000, e.to_string()))?;
+            let mut nova = orchestrator_memory::store::NewMemory::agent(
+                &project, &author, kind, title, body, priority,
+            );
+            if args.get("global").and_then(Value::as_bool).unwrap_or(false) {
+                nova.scope = orchestrator_memory::Scope::Global;
+            }
+            let m = store.add(nova).map_err(|e| (-32000, e.to_string()))?;
             // Avisa o memoryd para indexar já; se ele não responder, a
             // indexação periódica pega depois (a memória já está no SQLite).
             let _ = orchestrator_memory::daemon::call(
@@ -474,6 +489,7 @@ fn tools_call(
                 m.project, m.id, m.kind, m.author
             )
         }
+        "ssh_exec" => ssh_exec(store, &project_of(&args), &args)?,
         "list_memories" => {
             let project = project_of(&args);
             let kind = kind_arg(&args)?;
@@ -880,6 +896,62 @@ fn buscar_memoria(
     Ok((achados, false))
 }
 
+/// `ssh_exec`: roda um comando num servidor cadastrado pelo dono para o
+/// projeto (sem `host`, lista os cadastrados).
+fn ssh_exec(store: &MemoryStore, project: &str, args: &Value) -> Result<String, (i64, String)> {
+    use orchestrator_core::ssh;
+    let hosts = store
+        .ui_get(&ssh::state_key(project))
+        .ok()
+        .flatten()
+        .map(|j| ssh::parse(&j))
+        .unwrap_or_default();
+    let nomes = || {
+        hosts
+            .iter()
+            .map(|h| format!("- {} ({}@{}:{})", h.nome, h.usuario, h.host, h.porta))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let Some(host) = args.get("host").and_then(Value::as_str).filter(|s| !s.trim().is_empty()) else {
+        return Ok(if hosts.is_empty() {
+            "nenhum servidor SSH cadastrado neste projeto — o dono cadastra em Conexões SSH no app".into()
+        } else {
+            format!("servidores cadastrados:\n{}", nomes())
+        });
+    };
+    let Some(alvo) = hosts.iter().find(|h| h.nome.eq_ignore_ascii_case(host.trim())) else {
+        return Err((-32602, format!("servidor \"{host}\" não cadastrado. Cadastrados:\n{}", nomes())));
+    };
+    let command = str_arg(args, "command")?;
+    let cfg = ssh::write_config(project, &hosts).map_err(|e| (-32000, format!("config ssh: {e}")))?;
+    let out = std::process::Command::new("timeout")
+        .arg("120")
+        .arg("ssh")
+        .arg("-F")
+        .arg(&cfg)
+        .arg(ssh::alias(&alvo.nome))
+        .arg("--")
+        .arg(command)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| (-32000, format!("não consegui rodar o ssh: {e}")))?;
+    let mut texto = String::from_utf8_lossy(&out.stdout).to_string();
+    let err = String::from_utf8_lossy(&out.stderr);
+    if !err.trim().is_empty() {
+        texto.push_str(&format!("\n[stderr]\n{err}"));
+    }
+    let linhas: Vec<&str> = texto.lines().collect();
+    let corte = linhas.len().saturating_sub(80);
+    let marca = match out.status.code() {
+        Some(0) => "✔".to_string(),
+        Some(124) => "✖ passou de 120s e foi cortado".to_string(),
+        Some(c) => format!("✖ saiu com código {c}"),
+        None => "✖ interrompido".to_string(),
+    };
+    Ok(format!("{}@{} $ {command}  {marca}\n{}", alvo.usuario, alvo.nome, linhas[corte..].join("\n")))
+}
+
 fn project_of(args: &Value) -> String {
     args.get("project")
         .and_then(Value::as_str)
@@ -1006,6 +1078,7 @@ mod tests {
             [
                 "retrieve_memory",
                 "store_memory",
+                "ssh_exec",
                 "list_memories",
                 "log_decision",
                 "permission_prompt",

@@ -461,17 +461,181 @@ struct EntradaArquivo {
 
 /// A raiz do projeto ativo, canônica — toda operação do IDE é confinada a
 /// ela (nunca lê/escreve fora do projeto que o dono está vendo).
+/// A raiz da IDE: a pasta da workspace ativa (a própria, se tiver; senão a
+/// do projeto) — a mesma onde as CLIs desta workspace abrem.
 fn raiz_projeto(nucleo: &State<'_, Nucleo>) -> Result<std::path::PathBuf, String> {
     let (projeto, caminho) = {
         let e = travar(nucleo)?;
-        (e.project().to_string(), e.project_path())
+        (e.project().to_string(), e.workspace_dir())
     };
     caminho.canonicalize().map_err(|_| {
         format!(
-            "a pasta do projeto \"{projeto}\" não existe mais ({}) — confira o caminho em /projeto",
+            "a pasta de \"{projeto}\" não existe mais ({}) — clique com o botão direito no projeto ou na workspace para escolher outra",
             caminho.display()
         )
     })
+}
+
+#[tauri::command]
+fn alterar_pasta_projeto(nucleo: State<'_, Nucleo>, nome: String, pasta: String) -> Result<String, String> {
+    let mut e = travar(&nucleo)?;
+    e.set_project_path(&nome, &pasta);
+    Ok(e.status.clone())
+}
+
+/// `pasta` = "-" volta a workspace para a pasta do projeto.
+#[tauri::command]
+fn alterar_pasta_workspace(nucleo: State<'_, Nucleo>, indice: usize, pasta: String) -> Result<String, String> {
+    let mut e = travar(&nucleo)?;
+    e.set_workspace_dir_at(indice, &pasta);
+    Ok(e.status.clone())
+}
+
+#[tauri::command]
+fn abrir_terminal(nucleo: State<'_, Nucleo>) -> Result<String, String> {
+    let mut e = travar(&nucleo)?;
+    e.open_shell();
+    Ok(e.status.clone())
+}
+
+#[tauri::command]
+fn abrir_ssh(nucleo: State<'_, Nucleo>, nome: String) -> Result<String, String> {
+    let mut e = travar(&nucleo)?;
+    e.open_ssh(&nome);
+    Ok(e.status.clone())
+}
+
+#[tauri::command]
+fn ssh_listar(nucleo: State<'_, Nucleo>) -> Result<Vec<orchestrator_core::ssh::SshHost>, String> {
+    Ok(travar(&nucleo)?.ssh_hosts())
+}
+
+#[tauri::command]
+fn ssh_salvar(nucleo: State<'_, Nucleo>, hosts: Vec<orchestrator_core::ssh::SshHost>) -> Result<String, String> {
+    let mut e = travar(&nucleo)?;
+    e.set_ssh_hosts(hosts);
+    Ok(e.status.clone())
+}
+
+// ------------------------------------------------------ sandbox do dono
+
+/// Um `orchestrator-mcp` filho, falando JSON-RPC por stdio — é por ele que o
+/// DONO abre sandbox: a mesma porta que as IAs usam, então isolamento por
+/// projeto, captura da tela virtual e readoção do container são os mesmos.
+/// Fica vivo enquanto o app estiver aberto (a captura mora nele).
+struct McpFilho {
+    _child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    stdout: std::io::BufReader<std::process::ChildStdout>,
+    id: u64,
+}
+
+impl McpFilho {
+    fn novo(env: &[(String, String)]) -> Result<Self, String> {
+        let bin = std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .with_file_name("orchestrator-mcp");
+        let mut child = std::process::Command::new(&bin)
+            .envs(env.iter().map(|(k, v)| (k, v)))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("não consegui abrir {}: {e}", bin.display()))?;
+        let stdin = child.stdin.take().ok_or("sem stdin")?;
+        let stdout = std::io::BufReader::new(child.stdout.take().ok_or("sem stdout")?);
+        Ok(Self { _child: child, stdin, stdout, id: 0 })
+    }
+
+    fn chamar(&mut self, tool: &str, args: serde_json::Value) -> Result<String, String> {
+        use std::io::{BufRead, Write};
+        self.id += 1;
+        let req = serde_json::json!({
+            "jsonrpc": "2.0", "id": self.id, "method": "tools/call",
+            "params": { "name": tool, "arguments": args }
+        });
+        writeln!(self.stdin, "{req}").map_err(|e| e.to_string())?;
+        self.stdin.flush().map_err(|e| e.to_string())?;
+        let mut linha = String::new();
+        loop {
+            linha.clear();
+            if self.stdout.read_line(&mut linha).map_err(|e| e.to_string())? == 0 {
+                return Err("o servidor da sandbox fechou".into());
+            }
+            let v: serde_json::Value = serde_json::from_str(&linha).unwrap_or_default();
+            if v["id"] != serde_json::json!(self.id) {
+                continue;
+            }
+            if let Some(err) = v.get("error") {
+                return Err(err["message"].as_str().unwrap_or("erro").to_string());
+            }
+            let texto = v["result"]["content"][0]["text"].as_str().unwrap_or("").to_string();
+            return if v["result"]["isError"] == serde_json::json!(true) { Err(texto) } else { Ok(texto) };
+        }
+    }
+}
+
+/// Um `orchestrator-mcp` por (projeto, pasta da workspace).
+#[derive(Default)]
+struct Sandboxes(Mutex<std::collections::HashMap<String, McpFilho>>);
+
+fn chamar_sandbox(
+    nucleo: &State<'_, Nucleo>,
+    sandboxes: &State<'_, Sandboxes>,
+    tool: &str,
+    args: serde_json::Value,
+) -> Result<String, String> {
+    let env = {
+        let e = travar(nucleo)?;
+        e.cli_envs("dono", false)
+    };
+    let chave = env.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(";");
+    let mut mapa = sandboxes.0.lock().map_err(|_| "estado corrompido".to_string())?;
+    if !mapa.contains_key(&chave) {
+        mapa.insert(chave.clone(), McpFilho::novo(&env)?);
+    }
+    let r = mapa.get_mut(&chave).expect("inserido acima").chamar(tool, args);
+    if matches!(&r, Err(e) if e.contains("fechou")) {
+        mapa.remove(&chave);
+    }
+    r
+}
+
+/// O DONO sobe uma sandbox (mesma que as IAs usam): com endereço abre a
+/// página; sem, só sobe o container. Pode demorar (o navegador sobe junto),
+/// por isso é async — a janela não trava enquanto isso.
+#[tauri::command]
+async fn iniciar_sandbox(app: AppHandle, nome: String, url: String, docker: bool) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let nucleo = app.state::<Nucleo>();
+        let sandboxes = app.state::<Sandboxes>();
+        if url.trim().is_empty() {
+            let mut args = serde_json::json!({ "name": nome, "command": ["true"] });
+            if docker {
+                // `docker` só vale na criação, e quem cria sem página é o ui_exec
+                // — então abre uma página em branco para passar pelo ui_open.
+                args = serde_json::json!({ "name": nome, "url": "about:blank", "docker": true });
+                return chamar_sandbox(&nucleo, &sandboxes, "ui_open", args);
+            }
+            chamar_sandbox(&nucleo, &sandboxes, "ui_exec", args)
+        } else {
+            let args = serde_json::json!({ "name": nome, "url": url, "docker": docker });
+            chamar_sandbox(&nucleo, &sandboxes, "ui_open", args)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn parar_sandbox(app: AppHandle, nome: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let nucleo = app.state::<Nucleo>();
+        let sandboxes = app.state::<Sandboxes>();
+        chamar_sandbox(&nucleo, &sandboxes, "ui_stop", serde_json::json!({ "name": nome }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Resolve um caminho relativo dentro da raiz do projeto, recusando
@@ -743,6 +907,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Nucleo(Mutex::new(engine)))
+        .manage(Sandboxes::default())
         .setup(move |app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || laco(handle));
@@ -761,6 +926,14 @@ pub fn run() {
             ide_listar,
             ide_ler,
             ide_salvar,
+            alterar_pasta_projeto,
+            alterar_pasta_workspace,
+            abrir_terminal,
+            abrir_ssh,
+            ssh_listar,
+            ssh_salvar,
+            iniciar_sandbox,
+            parar_sandbox,
             trocar_workspace,
             focar_card,
             fechar_card,

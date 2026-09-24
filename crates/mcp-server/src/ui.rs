@@ -140,7 +140,8 @@ pub fn tool_descriptors() -> Vec<Value> {
                     "name": { "type": "string", "description": "Nome da sandbox (ex.: \"teste-frontend\")." },
                     "url": { "type": "string", "description": "Endereço ou arquivo a abrir (ex.: \"localhost:3000\", \"/work/index.html\")." },
                     "workdir": { "type": "string", "description": "Pasta do host a montar em /work. Padrão: a pasta que a TUI publicou para a workspace ativa — se não houver nenhuma, /work vem VAZIO e você precisa passar esta pasta." },
-                    "writable": { "type": "boolean", "description": "Gravar DE VERDADE na pasta do host (padrão: false). Você quase nunca precisa disto: por padrão a sandbox já escreve à vontade, só numa cópia descartável. Use true apenas quando o resultado tiver de ficar no projeto." }
+                    "writable": { "type": "boolean", "description": "Gravar DE VERDADE na pasta do host (padrão: false). Você quase nunca precisa disto: por padrão a sandbox já escreve à vontade, só numa cópia descartável. Use true apenas quando o resultado tiver de ficar no projeto." },
+                    "docker": { "type": "boolean", "description": "Permite rodar containers DENTRO da sandbox (docker/podman, compose) — para projeto que sobe banco, fila ou serviço em container. Só vale na criação da sandbox." }
                 },
                 "required": ["name", "url"]
             }
@@ -275,6 +276,9 @@ pub fn call(name: &str, args: &Value) -> Result<String, (i64, String)> {
                 .unwrap_or(false)
             {
                 spec.mount = Mount::ReadWrite;
+            }
+            if args.get("docker").and_then(Value::as_bool).unwrap_or(false) {
+                spec.containers = true;
             }
 
             let k = chave(sandbox);
@@ -495,6 +499,7 @@ fn session_for<T>(
         }
         let session = Session::start(&spec_padrao(name), &shots_dir())?;
         aviso = Some(session.resumo());
+        iniciar_tela_viva(k.clone());
         map.insert(k.clone(), session);
     }
     let session = map.get_mut(&k).expect("presente acima");

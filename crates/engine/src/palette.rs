@@ -104,6 +104,36 @@ pub const COMMANDS: &[Command] = &[
         about: "troca de projeto (restaura a conversa dele)",
     },
     Command {
+        name: "/pasta-projeto",
+        aliases: &[],
+        usage: "/pasta-projeto <caminho>",
+        about: "muda a pasta do projeto (conversa, memória e CLIs abertas ficam)",
+    },
+    Command {
+        name: "/terminal",
+        aliases: &["/shell"],
+        usage: "/terminal",
+        about: "abre um terminal na pasta da workspace",
+    },
+    Command {
+        name: "/ssh",
+        aliases: &[],
+        usage: "/ssh [servidor]",
+        about: "terminal SSH num servidor cadastrado do projeto",
+    },
+    Command {
+        name: "/liberar-pasta",
+        aliases: &[],
+        usage: "/liberar-pasta [caminho|-caminho]",
+        about: "libera (ou revoga com -) uma pasta fora do projeto para as IAs",
+    },
+    Command {
+        name: "/memoria-global",
+        aliases: &[],
+        usage: "/memoria-global [on|off]",
+        about: "deixa as IAs gravarem memória global sobre o que aprendem com você",
+    },
+    Command {
         name: "/novo-projeto",
         aliases: &["/new-project"],
         usage: "/novo-projeto <nome> [caminho]",

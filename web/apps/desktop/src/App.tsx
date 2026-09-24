@@ -9,6 +9,8 @@ import { Manual } from "./componentes/Manual";
 import { Memoria } from "./componentes/Memoria";
 import { Sandbox } from "./componentes/Sandbox";
 import { Ide } from "./componentes/Ide";
+import { Ssh } from "./componentes/Ssh";
+import { open as escolherPasta } from "@tauri-apps/plugin-dialog";
 
 type Vista = "workbench" | "decisoes" | "sandbox" | "ide";
 
@@ -93,6 +95,29 @@ export function App() {
   const [paleta, setPaleta] = useState({ aberta: false, texto: "" });
   const [provedores, setProvedores] = useState(false);
   const [modelos, setModelos] = useState(false);
+  const [ssh, setSsh] = useState(false);
+  /** Menu do botão direito num projeto ou workspace da lateral. */
+  const [menu, setMenu] = useState<{ tipo: "projeto" | "workspace"; alvo: string; indice: number; x: number; y: number } | null>(null);
+  const [avisoLateral, setAvisoLateral] = useState("");
+
+  useEffect(() => {
+    if (!menu) return;
+    const fechar = () => setMenu(null);
+    window.addEventListener("click", fechar);
+    window.addEventListener("keydown", fechar);
+    return () => {
+      window.removeEventListener("click", fechar);
+      window.removeEventListener("keydown", fechar);
+    };
+  }, [menu]);
+
+  const trocarPasta = async (tipo: "projeto" | "workspace", alvo: string, indice: number) => {
+    setMenu(null);
+    const pasta = await escolherPasta({ directory: true, multiple: false, title: tipo === "projeto" ? `Pasta do projeto ${alvo}` : `Pasta da workspace ${indice + 1}` });
+    if (typeof pasta !== "string") return;
+    const r = tipo === "projeto" ? await nucleo.alterarPastaProjeto(alvo, pasta) : await nucleo.alterarPastaWorkspace(indice, pasta);
+    setAvisoLateral(r);
+  };
   const [manual, setManual] = useState(false);
   const [memoria, setMemoria] = useState(false);
   const [chatVisivel, setChatVisivel] = useState(true);
@@ -229,13 +254,31 @@ export function App() {
         <aside className="lateral">
           <div className="rotulo">Projetos</div>
           {foto.projetos.map((p) => (
-            <button key={p} className={`item ${p === foto.projeto ? "ativo" : ""}`} onClick={() => void nucleo.enviar(`/projeto ${p}`)}>
+            <button
+              key={p}
+              className={`item ${p === foto.projeto ? "ativo" : ""}`}
+              onClick={() => void nucleo.enviar(`/projeto ${p}`)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ tipo: "projeto", alvo: p, indice: 0, x: e.clientX, y: e.clientY });
+              }}
+              title="Botão direito: alterar a pasta"
+            >
               {p}
             </button>
           ))}
           <div className="rotulo">Workspaces</div>
           {foto.workspaces.map((w, i) => (
-            <button key={w.numero} className={`item ${i === foto.workspace ? "ativo" : ""}`} onClick={() => void nucleo.trocarWorkspace(i)} title="Alt+↑ / Alt+↓">
+            <button
+              key={w.numero}
+              className={`item ${i === foto.workspace ? "ativo" : ""}`}
+              onClick={() => void nucleo.trocarWorkspace(i)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ tipo: "workspace", alvo: w.pasta, indice: i, x: e.clientX, y: e.clientY });
+              }}
+              title={`${w.pasta} — Alt+↑ / Alt+↓; botão direito: alterar a pasta`}
+            >
               <span className="mono dica">{w.numero}</span>
               <span className="item-nome">{w.cards.length ? `${w.cards.length} card${w.cards.length > 1 ? "s" : ""}` : "vazia"}</span>
             </button>
@@ -249,6 +292,13 @@ export function App() {
             <button className="botao botao-largo" onClick={() => inserirNoChat("/cli ")}>
               Abrir uma CLI
             </button>
+            <button className="botao botao-largo" onClick={() => void nucleo.abrirTerminal().then(setAvisoLateral)}>
+              Abrir terminal
+            </button>
+            <button className="botao botao-largo" onClick={() => setSsh(true)}>
+              Conexões SSH
+            </button>
+            {avisoLateral && <p className="dica">{avisoLateral}</p>}
             <p className="dica">Ou peça no chat: “abra uma CLI chamada frontend”.</p>
           </div>
         </aside>
@@ -263,7 +313,7 @@ export function App() {
         ) : vista === "sandbox" ? (
           <Sandbox key={foto.projeto} projeto={foto.projeto} voltar={() => setVista("workbench")} />
         ) : vista === "ide" ? (
-          <Ide key={foto.projeto} projeto={foto.projeto} voltar={() => setVista("workbench")} />
+          <Ide key={`${foto.projeto}|${ws.pasta}`} projeto={`${foto.projeto} · ${ws.pasta.split("/").filter(Boolean).pop() ?? ws.pasta}`} voltar={() => setVista("workbench")} />
         ) : (
           <>
             {chatVisivel && (
@@ -428,6 +478,23 @@ export function App() {
       <Paleta aberta={paleta.aberta} textoInicial={paleta.texto} fechar={() => setPaleta({ aberta: false, texto: "" })} aoInserir={inserirNoChat} aoAcao={acao} />
       <Provedores aberta={provedores} fechar={() => setProvedores(false)} />
       <Modelos aberta={modelos} fechar={() => setModelos(false)} foto={foto} />
+      <Ssh aberta={ssh} fechar={() => setSsh(false)} projeto={foto.projeto} />
+      {menu && (
+        <div className="menu-contexto" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => void trocarPasta(menu.tipo, menu.alvo, menu.indice)}>Alterar pasta…</button>
+          {menu.tipo === "workspace" && (
+            <button
+              onClick={() => {
+                const i = menu.indice;
+                setMenu(null);
+                void nucleo.alterarPastaWorkspace(i, "-").then(setAvisoLateral);
+              }}
+            >
+              Usar a pasta do projeto
+            </button>
+          )}
+        </div>
+      )}
       <Manual aberto={manual} fechar={() => setManual(false)} />
       <Memoria aberta={memoria} fechar={() => setMemoria(false)} projeto={foto.projeto} />
     </div>

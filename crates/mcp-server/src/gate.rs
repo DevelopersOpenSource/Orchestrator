@@ -295,6 +295,7 @@ fn is_our_tool(name: &str) -> bool {
         || name.starts_with("ui_")
         || name.starts_with("decision_")
         || name == "ask_owner"
+        || name == "ssh_exec"
 }
 
 /// O nome de uma ferramenta no formato das regras e das listas daqui (o do

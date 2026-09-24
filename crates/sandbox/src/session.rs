@@ -209,7 +209,11 @@ impl Session {
 /// Aceita "localhost:3000", "exemplo.com" e caminhos de arquivo.
 pub fn normalize_url(raw: &str) -> String {
     let raw = raw.trim();
-    if raw.starts_with("http://") || raw.starts_with("https://") || raw.starts_with("file://") {
+    if raw.starts_with("http://")
+        || raw.starts_with("https://")
+        || raw.starts_with("file://")
+        || raw.starts_with("about:")
+    {
         return raw.to_string();
     }
     if raw.starts_with('/') {

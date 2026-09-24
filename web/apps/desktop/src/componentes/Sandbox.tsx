@@ -22,6 +22,22 @@ export function Sandbox({ projeto, voltar }: { projeto: string; voltar: () => vo
     }
   });
   const [imagem, setImagem] = useState<string | null>(null);
+  const [url, setUrl] = useState("");
+  const [docker, setDocker] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [resposta, setResposta] = useState("");
+
+  const agir = async (f: () => Promise<string>) => {
+    setOcupado(true);
+    setResposta("");
+    try {
+      setResposta(await f());
+    } catch (e) {
+      setResposta(String(e));
+    } finally {
+      setOcupado(false);
+    }
+  };
   const [checou, setChecou] = useState(false);
   const alvo = useRef(nome);
   alvo.current = nome;
@@ -70,8 +86,8 @@ export function Sandbox({ projeto, voltar }: { projeto: string; voltar: () => vo
         <div>
           <h1>Tela virtual — {projeto}</h1>
           <p>
-            O que a sandbox de teste do orquestrador está mostrando agora neste projeto — peça a ele "abra uma sandbox chamada X" e
-            digite o nome aqui para acompanhar.
+            O que a sandbox de teste está mostrando agora neste projeto — a das IAs (digite o nome dela) ou uma que você mesmo inicia
+            aqui, rodando o projeto isolado da sua máquina.
           </p>
         </div>
         <button className="botao" onClick={voltar} title="Voltar ao workbench">
@@ -89,7 +105,28 @@ export function Sandbox({ projeto, voltar }: { projeto: string; voltar: () => vo
           placeholder="nome da sandbox (ex.: teste-frontend)"
           spellCheck={false}
         />
+        <input
+          className="sandbox-nome"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="endereço (ex.: localhost:3000) — vazio só sobe o container"
+          spellCheck={false}
+        />
+        <label className="dica sandbox-docker" title="Permite docker/podman e compose dentro da sandbox">
+          <input type="checkbox" checked={docker} onChange={(e) => setDocker(e.target.checked)} /> docker dentro
+        </label>
+        <button
+          className="botao"
+          disabled={ocupado || !nome.trim()}
+          onClick={() => void agir(() => nucleo.iniciarSandbox(nome.trim(), url.trim(), docker))}
+        >
+          {ocupado ? "subindo…" : "Iniciar"}
+        </button>
+        <button className="botao-leve" disabled={ocupado || !nome.trim()} onClick={() => void agir(() => nucleo.pararSandbox(nome.trim()))}>
+          Parar
+        </button>
       </div>
+      {resposta && <pre className="sandbox-resposta">{resposta}</pre>}
       <div className="sandbox-tela">
         {imagem ? (
           <img src={imagem} alt={`tela ao vivo da sandbox "${nome}"`} />

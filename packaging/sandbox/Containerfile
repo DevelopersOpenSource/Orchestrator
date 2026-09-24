@@ -37,12 +37,49 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Ferramentas de teste: build, pacotes, clientes de banco/fila e rede — para
+# subir e conferir o backend de verdade, não só abrir a página.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        jq \
+        make \
+        npm \
+        python3-pip \
+        python3-venv \
+        sqlite3 \
+        postgresql-client \
+        redis-tools \
+        netcat-openbsd \
+        iputils-ping \
+        dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Containers DENTRO da sandbox (`docker`/`podman`, compose), para projetos
+# que sobem banco/fila em container. Só funcionam numa sandbox aberta com
+# `docker: true` (ui_open), que roda com --privileged — no podman rootless
+# isso continua limitado ao usuário do dono. `podman-docker` dá o comando
+# `docker`; storage `vfs` porque overlay dentro de overlay não monta.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        podman \
+        podman-docker \
+        podman-compose \
+        fuse-overlayfs \
+        uidmap \
+        slirp4netns \
+    && rm -rf /var/lib/apt/lists/* \
+    && touch /etc/containers/nodocker
+
 # Usuário sem privilégio: nada aqui precisa de root. O diretório de sockets
 # do X precisa existir antes (o Xvfb não consegue criá-lo sem ser root).
 RUN useradd -m -u 1000 orch \
     && mkdir -p /work /shots /tmp/.X11-unix \
     && chmod 1777 /tmp/.X11-unix \
-    && chown -R orch /work /shots
+    && chown -R orch /work /shots \
+    && echo "orch:10000:50000" > /etc/subuid \
+    && echo "orch:10000:50000" > /etc/subgid \
+    && mkdir -p /home/orch/.config/containers \
+    && printf '[storage]\ndriver = "vfs"\n' > /home/orch/.config/containers/storage.conf \
+    && chown -R orch /home/orch/.config
 USER orch
 WORKDIR /work
 

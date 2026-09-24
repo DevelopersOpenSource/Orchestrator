@@ -611,17 +611,26 @@ impl Engine {
     /// Define a pasta da workspace atual (`/pasta <caminho>`), expandindo `~`.
     /// Persistida em `ui_state` para voltar na próxima execução.
     pub fn set_workspace_dir(&mut self, raw: &str) {
+        self.set_workspace_dir_at(self.ws_idx, raw);
+    }
+
+    /// Como [`Self::set_workspace_dir`], para qualquer workspace do projeto
+    /// ativo (o app muda a pasta de uma workspace pelo menu dela, sem
+    /// precisar entrar nela). CLIs já abertas seguem onde estão; as novas,
+    /// a sandbox e a IDE passam a usar a pasta nova.
+    pub fn set_workspace_dir_at(&mut self, idx: usize, raw: &str) {
+        if idx >= self.workspaces.len() {
+            return;
+        }
         let raw = raw.trim();
-        let key = format!("ws.{}.dir", self.ws_idx);
+        let key = format!("ws.{idx}.dir");
         // Sem argumento: abre o explorador do sistema.
         if raw.is_empty() {
-            match picker_dir::pick_directory(
-                &format!("Pasta da workspace {}", self.ws_idx + 1),
-                &self.workspace_dir(),
-            ) {
+            let atual = self.workspaces[idx].dir.clone().unwrap_or_else(|| self.project_path());
+            match picker_dir::pick_directory(&format!("Pasta da workspace {}", idx + 1), &atual) {
                 Ok(p) => {
                     let escolhido = p.display().to_string();
-                    return self.set_workspace_dir(&escolhido);
+                    return self.set_workspace_dir_at(idx, &escolhido);
                 }
                 Err(e) => {
                     self.status = format!(
@@ -633,11 +642,11 @@ impl Engine {
             }
         }
         if raw == "-" {
-            self.workspaces[self.ws_idx].dir = None;
+            self.workspaces[idx].dir = None;
             let _ = self.store.ui_delete(&key);
             self.status = format!(
                 "workspace {} volta a usar a pasta do projeto ({})",
-                self.ws_idx + 1,
+                idx + 1,
                 self.project_path().display()
             );
             return;
@@ -649,12 +658,160 @@ impl Engine {
         }
         let canonical = expanded.canonicalize().unwrap_or(expanded);
         let _ = self.store.ui_set(&key, &canonical.display().to_string());
-        self.workspaces[self.ws_idx].dir = Some(canonical.clone());
+        self.workspaces[idx].dir = Some(canonical.clone());
+        if idx == self.ws_idx {
+            self.ensure_project_setup();
+        }
+        self.status = format!("workspace {} agora abre CLIs em {}", idx + 1, canonical.display());
+    }
+
+    /// Muda a pasta de um projeto (menu do projeto no app, `/pasta-projeto`).
+    ///
+    /// Nada que já existe é perdido: conversa, memória e decisões são do
+    /// projeto pelo NOME, não pela pasta; CLIs já abertas continuam rodando
+    /// onde nasceram. Workspaces sem pasta própria passam a seguir a nova —
+    /// CLIs novas, sandbox e IDE já abrem nela.
+    pub fn set_project_path(&mut self, name: &str, raw: &str) {
+        let Some(idx) = self.projects.iter().position(|p| p.eq_ignore_ascii_case(name.trim())) else {
+            self.status = format!("projeto \"{}\" não existe", name.trim());
+            return;
+        };
+        if raw.trim().is_empty() {
+            let atual = self.project_paths[idx].clone();
+            match picker_dir::pick_directory(&format!("Pasta do projeto {}", self.projects[idx]), &atual) {
+                Ok(p) => return self.set_project_path(name, &p.display().to_string()),
+                Err(e) => {
+                    self.status = format!("{} (use `/pasta-projeto <caminho>`)", e.message());
+                    return;
+                }
+            }
+        }
+        let expanded = expand_tilde(raw.trim());
+        if !expanded.is_dir() {
+            self.status = format!("pasta não encontrada: {}", expanded.display());
+            return;
+        }
+        let pasta = expanded.canonicalize().unwrap_or(expanded);
+        self.project_paths[idx] = pasta.clone();
+        let nome = self.projects[idx].clone();
+        if let Some(p) = self.config.projects.iter_mut().find(|p| p.name == nome) {
+            p.path = pasta.clone();
+        }
+        let gravado = match &self.config_path {
+            Some(cp) => self.config.save(cp).is_ok(),
+            None => false,
+        };
+        if idx == self.project_idx {
+            self.ensure_project_setup();
+        }
         self.status = format!(
-            "workspace {} agora abre CLIs em {}",
-            self.ws_idx + 1,
-            canonical.display()
+            "projeto \"{nome}\" agora em {}{}",
+            pasta.display(),
+            if gravado { "" } else { " (só nesta sessão — não consegui gravar o config)" }
         );
+    }
+
+    /// Terminal (o shell do dono) num card, na pasta da workspace.
+    pub fn open_shell(&mut self) {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "bash".into());
+        self.open_plain_card("terminal", &shell, &[]);
+    }
+
+    /// Sessão SSH interativa num card, num servidor cadastrado do projeto.
+    pub fn open_ssh(&mut self, nome: &str) {
+        let hosts = self.ssh_hosts();
+        let Some(h) = hosts.iter().find(|h| h.nome.eq_ignore_ascii_case(nome.trim())) else {
+            self.status = format!("servidor SSH \"{nome}\" não cadastrado neste projeto");
+            return;
+        };
+        match orchestrator_core::ssh::write_config(self.project(), &hosts) {
+            Ok(cfg) => {
+                let args = vec!["-F".to_string(), cfg.display().to_string(), orchestrator_core::ssh::alias(&h.nome)];
+                self.open_plain_card(&format!("ssh {}", h.nome), "ssh", &args);
+            }
+            Err(e) => self.status = format!("não consegui gravar a config SSH: {e}"),
+        }
+    }
+
+    /// Card de terminal comum (não dirigido pelo orquestrador): quem digita
+    /// é o dono.
+    fn open_plain_card(&mut self, base: &str, program: &str, args: &[String]) {
+        if self.ws().panes.len() >= MAX_PANES {
+            self.status = format!("workspace {} cheia ({MAX_PANES} cards)", self.ws_idx + 1);
+            return;
+        }
+        self.term_counter += 1;
+        let name = format!("{base} #{}", self.term_counter);
+        let cwd = self.workspace_dir();
+        let env = self.cli_envs(&name, false);
+        match TermSession::spawn_env(name.clone(), program, args, &cwd, 24, 80, &env) {
+            Ok(session) => {
+                let ws = self.ws();
+                ws.panes.push(Pane::Term(Box::new(session)));
+                ws.focused = ws.panes.len() - 1;
+                self.events.push(EngineEvent::FocusGrid);
+                self.status = format!("{name} aberto em {}", short_path(&cwd));
+            }
+            Err(err) => self.status = format!("erro abrindo {name}: {err}"),
+        }
+    }
+
+    /// Servidores SSH cadastrados para o projeto ativo.
+    pub fn ssh_hosts(&self) -> Vec<orchestrator_core::ssh::SshHost> {
+        self.store
+            .ui_get(&orchestrator_core::ssh::state_key(self.project()))
+            .ok()
+            .flatten()
+            .map(|j| orchestrator_core::ssh::parse(&j))
+            .unwrap_or_default()
+    }
+
+    pub fn set_ssh_hosts(&mut self, hosts: Vec<orchestrator_core::ssh::SshHost>) {
+        let json = serde_json::to_string(&hosts).unwrap_or_else(|_| "[]".into());
+        let _ = self.store.ui_set(&orchestrator_core::ssh::state_key(self.project()), &json);
+        let _ = orchestrator_core::ssh::write_config(self.project(), &hosts);
+        self.status = format!("{} servidor(es) SSH neste projeto", hosts.len());
+    }
+
+    /// Pastas fora do projeto que o dono liberou para as IAs (mesma chave que
+    /// a trava lê em `crates/mcp-server/src/enforce.rs::allowed_dirs_key`).
+    pub fn authorized_dirs(&self) -> Vec<String> {
+        self.store
+            .ui_get(&format!("pastas.autorizadas.{}", self.project()))
+            .ok()
+            .flatten()
+            .map(|s| s.lines().filter(|l| !l.trim().is_empty()).map(str::to_string).collect())
+            .unwrap_or_default()
+    }
+
+    /// `/liberar-pasta <caminho>` libera; `-<caminho>` revoga; sem nada, lista.
+    pub fn authorize_dir(&mut self, raw: &str) {
+        let raw = raw.trim();
+        let mut atuais = self.authorized_dirs();
+        if raw.is_empty() {
+            self.status = if atuais.is_empty() {
+                "nenhuma pasta fora do projeto liberada — as IAs pedem sua autorização antes".into()
+            } else {
+                format!("liberadas além do projeto: {}", atuais.join(", "))
+            };
+            return;
+        }
+        let (revogar, caminho) = match raw.strip_prefix('-') {
+            Some(r) => (true, r.trim()),
+            None => (false, raw),
+        };
+        let p = expand_tilde(caminho);
+        let p = p.canonicalize().unwrap_or(p).display().to_string();
+        atuais.retain(|a| a != &p);
+        if !revogar {
+            atuais.push(p.clone());
+        }
+        let _ = self.store.ui_set(&format!("pastas.autorizadas.{}", self.project()), &atuais.join("\n"));
+        self.status = if revogar {
+            format!("{p} voltou a precisar da sua autorização")
+        } else {
+            format!("as IAs deste projeto podem usar {p} sem pedir")
+        };
     }
 
     /// Troca o projeto ativo (`/projeto [nome]`; sem nome, cicla) — leva a
@@ -2516,6 +2673,43 @@ impl Engine {
             }
         } else if let Some(arg) = command_arg(input, &["/pasta", "/dir"]) {
             self.set_workspace_dir(arg.as_deref().unwrap_or(""));
+        } else if let Some(arg) = command_arg(input, &["/pasta-projeto"]) {
+            let projeto = self.project().to_string();
+            self.set_project_path(&projeto, arg.as_deref().unwrap_or(""));
+        } else if command_arg(input, &["/terminal", "/shell"]).is_some() {
+            self.open_shell();
+        } else if let Some(arg) = command_arg(input, &["/ssh"]) {
+            match arg {
+                Some(nome) => self.open_ssh(&nome),
+                None => {
+                    let nomes: Vec<String> = self.ssh_hosts().into_iter().map(|h| h.nome).collect();
+                    self.status = if nomes.is_empty() {
+                        "nenhum servidor SSH cadastrado — use Conexões SSH no app".into()
+                    } else {
+                        format!("servidores: {} — /ssh <nome> abre um terminal", nomes.join(", "))
+                    };
+                }
+            }
+        } else if let Some(arg) = command_arg(input, &["/liberar-pasta"]) {
+            self.authorize_dir(arg.as_deref().unwrap_or(""));
+        } else if let Some(arg) = command_arg(input, &["/memoria-global"]) {
+            let key = orchestrator_memory::store::AGENT_GLOBAL_KEY;
+            match arg.as_deref() {
+                Some("on") | Some("liga") => {
+                    let _ = self.store.ui_set(key, "1");
+                    self.status = "as IAs agora podem gravar memória GLOBAL (vale em todo projeto) sobre o que aprendem com você".into();
+                }
+                Some("off") | Some("desliga") => {
+                    let _ = self.store.ui_delete(key);
+                    self.status = "memória global volta a ser só sua — IAs gravam só no projeto".into();
+                }
+                _ => {
+                    self.status = format!(
+                        "memória global das IAs: {} (/memoria-global on|off)",
+                        if self.store.agent_global_allowed() { "LIGADA" } else { "desligada" }
+                    );
+                }
+            }
         } else if let Some(arg) = command_arg(input, &["/novo-projeto", "/new-project"]) {
             self.create_project(arg.as_deref().unwrap_or(""));
         } else if let Some(arg) = command_arg(input, &["/projeto", "/project"]) {

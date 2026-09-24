@@ -77,6 +77,15 @@ export interface Foto {
   testeModelo: TesteModelo | null;
 }
 
+export interface SshHost {
+  nome: string;
+  host: string;
+  usuario: string;
+  porta: number;
+  /** Caminho da chave privada no seu disco (nunca é copiada). */
+  chave: string;
+}
+
 export interface EntradaArquivo {
   nome: string;
   /** Relativo à raiz do projeto — é o que volta para `ideLer`/`ideSalvar`. */
@@ -121,6 +130,16 @@ export const nucleo = {
   ideListar: (pasta: string) => invoke<EntradaArquivo[]>("ide_listar", { pasta }),
   ideLer: (caminho: string) => invoke<string>("ide_ler", { caminho }),
   ideSalvar: (caminho: string, conteudo: string) => invoke<void>("ide_salvar", { caminho, conteudo }),
+  alterarPastaProjeto: (nome: string, pasta: string) => invoke<string>("alterar_pasta_projeto", { nome, pasta }),
+  /** `pasta` = "-" volta a workspace para a pasta do projeto. */
+  alterarPastaWorkspace: (indice: number, pasta: string) => invoke<string>("alterar_pasta_workspace", { indice, pasta }),
+  abrirTerminal: () => invoke<string>("abrir_terminal"),
+  abrirSsh: (nome: string) => invoke<string>("abrir_ssh", { nome }),
+  sshListar: () => invoke<SshHost[]>("ssh_listar"),
+  sshSalvar: (hosts: SshHost[]) => invoke<string>("ssh_salvar", { hosts }),
+  /** Sem `url`, só sobe o container; com `docker`, deixa rodar containers dentro. */
+  iniciarSandbox: (nome: string, url: string, docker: boolean) => invoke<string>("iniciar_sandbox", { nome, url, docker }),
+  pararSandbox: (nome: string) => invoke<string>("parar_sandbox", { nome }),
   trocarWorkspace: (indice: number) => invoke<void>("trocar_workspace", { indice }),
   focarCard: (indice: number) => invoke<void>("focar_card", { indice }),
   fecharCard: (indice: number) => invoke<void>("fechar_card", { indice }),

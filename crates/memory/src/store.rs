@@ -10,6 +10,9 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::Mutex;
 
+/// Chave em `ui_state`: "1" = o dono liberou as IAs a gravar memória global.
+pub const AGENT_GLOBAL_KEY: &str = "memoria.ia_global";
+
 /// Store de memória sobre SQLite — a fonte da verdade.
 ///
 /// Não carrega modelo nenhum: vetores e reranker moram no
@@ -416,11 +419,13 @@ impl MemoryStore {
 
     /// Grava uma memória (com scrub de segredos), pendente de indexar.
     ///
-    /// IA não grava memória global: o que vale em todo projeto é só do dono.
+    /// IA só grava memória global quando o dono liberou
+    /// ([`AGENT_GLOBAL_KEY`] = "1", comando `/memoria-global on`).
     pub fn add(&self, new: NewMemory<'_>) -> Result<Memory> {
-        if new.scope == Scope::Global && new.origin == Origin::Agent {
+        if new.scope == Scope::Global && new.origin == Origin::Agent && !self.agent_global_allowed() {
             return Err(anyhow!(
-                "memória global é só do dono — uma IA grava no projeto dela"
+                "memória global da IA está desligada pelo dono — grave no projeto (sem global), \
+                 ou peça ao dono para ligar com /memoria-global on"
             ));
         }
         let project = match new.scope {
@@ -1164,6 +1169,11 @@ impl MemoryStore {
     }
 
     /// Lê uma chave do estado da UI.
+    /// O dono deixou as IAs gravarem memória GLOBAL (vale em todo projeto)?
+    pub fn agent_global_allowed(&self) -> bool {
+        matches!(self.ui_get(AGENT_GLOBAL_KEY), Ok(Some(v)) if v == "1")
+    }
+
     pub fn ui_get(&self, key: &str) -> Result<Option<String>> {
         let conn = self.lock();
         let v = conn
@@ -1529,6 +1539,15 @@ mod tests {
         assert_eq!(m.origin, Origin::Agent);
         assert_eq!(m.author, "frontend");
         assert_eq!(m.origin_label(), "IA: frontend");
+
+        // Com o dono liberando (/memoria-global on), a IA grava global — e a
+        // memória vale em outro projeto também, ainda marcada como da IA.
+        s.ui_set(AGENT_GLOBAL_KEY, "1").unwrap();
+        let mut nova = NewMemory::agent("loja", "frontend", MemoryKind::Practice, "dono prefere pt-BR", "b", 0);
+        nova.scope = Scope::Global;
+        let g = s.add(nova).unwrap();
+        assert_eq!(g.origin, Origin::Agent);
+        assert!(s.list_visible("outro-projeto", None).unwrap().iter().any(|m| m.id == g.id));
     }
 
     #[test]

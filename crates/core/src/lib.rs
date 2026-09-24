@@ -7,6 +7,7 @@ pub mod config;
 pub mod detect;
 pub mod error;
 pub mod project;
+pub mod ssh;
 
 pub use config::{
     AgentDefaults, CliSpec, Config, LlmBackend, LlmProvider, ProjectConfig, ProviderKind,
