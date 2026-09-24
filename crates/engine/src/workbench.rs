@@ -758,19 +758,27 @@ impl Engine {
 
     /// Servidores SSH cadastrados para o projeto ativo.
     pub fn ssh_hosts(&self) -> Vec<orchestrator_core::ssh::SshHost> {
-        self.store
-            .ui_get(&orchestrator_core::ssh::state_key(self.project()))
-            .ok()
-            .flatten()
-            .map(|j| orchestrator_core::ssh::parse(&j))
-            .unwrap_or_default()
+        use orchestrator_core::ssh;
+        let global = self.store.ui_get(ssh::GLOBAL_KEY).ok().flatten();
+        let proprio = self.store.ui_get(&ssh::state_key(self.project())).ok().flatten();
+        ssh::merge(global.as_deref(), proprio.as_deref())
     }
 
+    /// Grava a lista inteira como o dialogo a mostra: os marcados `global`
+    /// vão para a lista de todos os projetos, o resto fica neste.
     pub fn set_ssh_hosts(&mut self, hosts: Vec<orchestrator_core::ssh::SshHost>) {
-        let json = serde_json::to_string(&hosts).unwrap_or_else(|_| "[]".into());
-        let _ = self.store.ui_set(&orchestrator_core::ssh::state_key(self.project()), &json);
-        let _ = orchestrator_core::ssh::write_config(self.project(), &hosts);
-        self.status = format!("{} servidor(es) SSH neste projeto", hosts.len());
+        use orchestrator_core::ssh;
+        let (globais, proprios): (Vec<_>, Vec<_>) = hosts.iter().cloned().partition(|h| h.global);
+        let json = |v: &Vec<ssh::SshHost>| serde_json::to_string(v).unwrap_or_else(|_| "[]".into());
+        let _ = self.store.ui_set(ssh::GLOBAL_KEY, &json(&globais));
+        let _ = self.store.ui_set(&ssh::state_key(self.project()), &json(&proprios));
+        let _ = ssh::write_config(self.project(), &hosts);
+        self.status = format!(
+            "{} servidor(es) SSH: {} em todos os projetos, {} só neste",
+            hosts.len(),
+            globais.len(),
+            proprios.len()
+        );
     }
 
     /// Pastas fora do projeto que o dono liberou para as IAs (mesma chave que

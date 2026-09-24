@@ -84,6 +84,8 @@ export interface SshHost {
   porta: number;
   /** Caminho da chave privada no seu disco (nunca é copiada). */
   chave: string;
+  /** Vale em todos os projetos (uma VPS costuma servir a vários). */
+  global: boolean;
 }
 
 export interface EntradaArquivo {

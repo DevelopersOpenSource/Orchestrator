@@ -14,6 +14,28 @@ pub fn state_key(project: &str) -> String {
     format!("ssh.hosts.{project}")
 }
 
+/// Servidores que valem em TODO projeto (uma VPS costuma servir a vários).
+pub const GLOBAL_KEY: &str = "ssh.hosts.*";
+
+/// Os servidores que um projeto enxerga: os globais e os dele (o do projeto
+/// vence quando os dois têm o mesmo nome).
+pub fn merge(global_json: Option<&str>, project_json: Option<&str>) -> Vec<SshHost> {
+    let mut out: Vec<SshHost> = global_json
+        .map(parse)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|mut h| {
+            h.global = true;
+            h
+        })
+        .collect();
+    for h in project_json.map(parse).unwrap_or_default() {
+        out.retain(|g| !g.nome.eq_ignore_ascii_case(&h.nome));
+        out.push(SshHost { global: false, ..h });
+    }
+    out
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SshHost {
     /// Apelido usado no comando (`ssh <nome>`).
@@ -26,6 +48,9 @@ pub struct SshHost {
     /// Caminho da chave privada no disco do dono (`~` expandido).
     #[serde(default)]
     pub chave: String,
+    /// Vale em todo projeto (guardado em [`GLOBAL_KEY`]).
+    #[serde(default)]
+    pub global: bool,
 }
 
 fn usuario_padrao() -> String {
@@ -121,6 +146,7 @@ mod tests {
             usuario: "root".into(),
             porta: 2222,
             chave: "/home/eu/.ssh/id_vps".into(),
+            global: false,
         }];
         let t = config_text(&hosts, Path::new("/tmp/kh"));
         assert!(t.starts_with("Host minha-vps\n"));
@@ -134,5 +160,15 @@ mod tests {
         let h = parse(r#"[{"nome":"a","host":"h"}]"#);
         assert_eq!((h[0].usuario.as_str(), h[0].porta), ("root", 22));
         assert!(parse("não é json").is_empty());
+    }
+
+    #[test]
+    fn global_hosts_show_in_every_project_and_the_project_wins_on_name() {
+        let g = r#"[{"nome":"vps","host":"1.1.1.1"},{"nome":"backup","host":"2.2.2.2"}]"#;
+        let p = r#"[{"nome":"vps","host":"9.9.9.9"}]"#;
+        let m = merge(Some(g), Some(p));
+        assert_eq!(m.len(), 2);
+        assert!(m.iter().any(|h| h.nome == "backup" && h.global));
+        assert!(m.iter().any(|h| h.nome == "vps" && h.host == "9.9.9.9" && !h.global));
     }
 }

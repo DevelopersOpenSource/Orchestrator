@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { nucleo, type SshHost } from "../nucleo";
 
-const VAZIO: SshHost = { nome: "", host: "", usuario: "root", porta: 22, chave: "" };
+const VAZIO: SshHost = { nome: "", host: "", usuario: "root", porta: 22, chave: "", global: true };
 
 /**
  * Servidores SSH deste projeto. A IA usa com `ssh_exec` (sem pedir senha,
@@ -72,6 +72,7 @@ export function Ssh({ aberta, fechar, projeto }: { aberta: boolean; fechar: () =
                 <li key={h.nome}>
                   <span className="mono">
                     <strong>{h.nome}</strong> {h.usuario}@{h.host}:{h.porta}
+                    <span className="dica"> · {h.global ? "todos os projetos" : "só este projeto"}</span>
                   </span>
                   <span className="dica mono">{h.chave || "sem chave (usa o ssh-agent)"}</span>
                   <span className="ssh-acoes">
@@ -100,6 +101,10 @@ export function Ssh({ aberta, fechar, projeto }: { aberta: boolean; fechar: () =
             <button className="botao-leve" onClick={() => void escolherChave()}>
               Escolher…
             </button>
+            <label className="dica sandbox-docker">
+              <input type="checkbox" checked={novo.global} onChange={(e) => setNovo({ ...novo, global: e.target.checked })} /> vale em todos os
+              projetos
+            </label>
             <button className="botao" onClick={adicionar}>
               Adicionar
             </button>

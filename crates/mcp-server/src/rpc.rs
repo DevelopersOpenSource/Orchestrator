@@ -900,12 +900,9 @@ fn buscar_memoria(
 /// projeto (sem `host`, lista os cadastrados).
 fn ssh_exec(store: &MemoryStore, project: &str, args: &Value) -> Result<String, (i64, String)> {
     use orchestrator_core::ssh;
-    let hosts = store
-        .ui_get(&ssh::state_key(project))
-        .ok()
-        .flatten()
-        .map(|j| ssh::parse(&j))
-        .unwrap_or_default();
+    let global = store.ui_get(ssh::GLOBAL_KEY).ok().flatten();
+    let proprio = store.ui_get(&ssh::state_key(project)).ok().flatten();
+    let hosts = ssh::merge(global.as_deref(), proprio.as_deref());
     let nomes = || {
         hosts
             .iter()
