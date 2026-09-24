@@ -310,9 +310,12 @@ impl Protecao {
 type Sessoes = Arc<Mutex<HashSet<String>>>;
 type Guarda = Arc<Mutex<Protecao>>;
 
+/// O AppHandle para o `/rpc` despachar (posto quando o servidor sobe). Fora do
+/// `Estado` para o `Estado` continuar testável sem um app Tauri de verdade.
+static APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
 #[derive(Clone)]
 struct Estado {
-    app: AppHandle,
     motor: Motor,
     sessoes: Sessoes,
     protecao: Guarda,
@@ -398,12 +401,22 @@ async fn raiz(State(e): State<Estado>, headers: HeaderMap) -> Response {
     }
 }
 
-/// Assets do frontend (`/assets/...`, fontes, etc.): exigem sessão.
+/// Assets do frontend (`/assets/...`, fontes): exigem sessão. O curinga tira
+/// o prefixo `assets/`, então recolocamos para achar no embed. Asset ausente
+/// é 404 de VERDADE — nunca cai no index.html (senão o navegador tentaria
+/// interpretar HTML como CSS/JS e recusava por MIME).
 async fn asset(State(e): State<Estado>, headers: HeaderMap, Path(caminho): Path<String>) -> Response {
     if !autenticado(&e, &headers) {
         return nada();
     }
-    arquivo_embutido(&caminho)
+    let alvo = format!("assets/{caminho}");
+    match Frontend::get(&alvo) {
+        Some(f) => {
+            let mime = f.metadata.mimetype().to_string();
+            ([(header::CONTENT_TYPE, mime)], f.data.into_owned()).into_response()
+        }
+        None => (StatusCode::NOT_FOUND, "not found").into_response(),
+    }
 }
 
 /// `POST /rpc/{cmd}` — a ponte do `invoke` do navegador para o MESMO código
@@ -412,7 +425,9 @@ async fn rpc(State(e): State<Estado>, Path(cmd): Path<String>, headers: HeaderMa
     if !autenticado(&e, &headers) {
         return negar();
     }
-    let app = e.app.clone();
+    let Some(app) = APP.get().cloned() else {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "servidor ainda subindo").into_response();
+    };
     let args = corpo.map(|Json(v)| v).unwrap_or(Value::Null);
     let r = tauri::async_runtime::spawn_blocking(move || crate::despachar(&app, &cmd, &args)).await;
     match r {
@@ -665,15 +680,14 @@ fn rotas(estado: Estado) -> Router {
         .route("/eventos", get(eventos_sse))
         .route("/terminal/{indice}", get(terminal_sse))
         .route("/assets/{*caminho}", get(asset))
-        .route("/vite.svg", get(asset))
         .layer(middleware::from_fn(cabecalhos))
         .with_state(estado)
 }
 
 /// Sobe o servidor (uma vez). Bind SÓ no loopback — nunca 0.0.0.0.
-pub async fn servir(app: AppHandle, motor: Motor, sessoes: Sessoes, protecao: Guarda) -> anyhow::Result<()> {
+pub async fn servir(motor: Motor, sessoes: Sessoes, protecao: Guarda) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, PORTA)).await?;
-    axum::serve(listener, rotas(Estado { app, motor, sessoes, protecao })).await?;
+    axum::serve(listener, rotas(Estado { motor, sessoes, protecao })).await?;
     Ok(())
 }
 
@@ -708,10 +722,11 @@ impl Remoto {
         if self.servidor_no_ar.swap(true, Ordering::SeqCst) {
             return;
         }
+        let _ = APP.set(app);
         let sessoes = self.sessoes();
         let protecao = self.protecao();
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = servir(app, motor, sessoes, protecao).await {
+            if let Err(e) = servir(motor, sessoes, protecao).await {
                 eprintln!("servidor remoto caiu: {e:#}");
             }
         });
@@ -849,6 +864,48 @@ mod tests {
         assert!(!senha_confere(&store, "Segredo12"));
     }
 
+    #[tokio::test]
+    async fn assets_saem_com_mime_certo_e_faltante_e_404() {
+        // O bug da tela branca: /assets/x.css vinha como text/html (fallback do
+        // index) porque o prefixo `assets/` era perdido. Aqui garante o certo.
+        let motor = motor_teste();
+        {
+            let e = motor.lock().unwrap();
+            definir_senha(&e.store, "segredo123").unwrap();
+        }
+        let est = estado_teste(motor.clone());
+        let token = gate_do_motor(&motor);
+        let r = rotas(est.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/entrar/{token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"senha":"segredo123"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let cookie = r.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap().split(';').next().unwrap().to_string();
+
+        let css = Frontend::iter().find(|p| p.ends_with(".css")).map(|p| p.strip_prefix("assets/").unwrap().to_string());
+        if let Some(css) = css {
+            let r = rotas(est.clone())
+                .oneshot(Request::builder().uri(format!("/assets/{css}")).header(header::COOKIE, &cookie).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::OK);
+            let ct = r.headers().get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+            assert!(ct.contains("css") && !ct.contains("html"), "mime do css: {ct}");
+        }
+        // Asset faltante = 404 puro (nunca index.html).
+        let r = rotas(est)
+            .oneshot(Request::builder().uri("/assets/naoexiste-xyz.css").header(header::COOKIE, &cookie).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+    }
+
     fn estado_teste(motor: Motor) -> Estado {
         Estado {
             motor,
@@ -914,7 +971,7 @@ mod tests {
 
         // Com a sessão, o estado abre.
         let r = rotas(est)
-            .oneshot(Request::builder().uri("/estado").header(header::COOKIE, &cookie).body(Body::empty()).unwrap())
+            .oneshot(Request::builder().uri("/eventos").header(header::COOKIE, &cookie).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
