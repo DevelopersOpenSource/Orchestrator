@@ -96,6 +96,8 @@ export interface AcessoRemoto {
 
 export interface RemotoStatus {
   senhaDefinida: boolean;
+  /** 2FA (autenticador) ativo? */
+  totpAtivo: boolean;
   /** URL base do túnel enquanto ligado; `null` quando desligado. */
   url: string | null;
   /** Caminho secreto da tela de login (`/entrar/<token>`); com a URL forma o link. */
@@ -163,6 +165,13 @@ export const nucleo = {
   /** Sobe o servidor local (loopback) se preciso e abre o túnel; devolve a URL. */
   remotoLigar: () => invoke<string>("remoto_ligar"),
   remotoDesligar: () => invoke<void>("remoto_desligar"),
+  /** Gera um link novo (invalida o antigo) e derruba as sessões; devolve o caminho. */
+  remotoRegenerarToken: () => invoke<string>("remoto_regenerar_token"),
+  remotoRevogarSessoes: () => invoke<void>("remoto_revogar_sessoes"),
+  /** Começa o 2FA: devolve o otpauth:// e o segredo base32 para o autenticador. */
+  remotoTotpIniciar: () => invoke<{ otpauth: string; secret: string }>("remoto_totp_iniciar"),
+  remotoTotpAtivar: (codigo: string) => invoke<void>("remoto_totp_ativar", { codigo }),
+  remotoTotpDesativar: () => invoke<void>("remoto_totp_desativar"),
   trocarWorkspace: (indice: number) => invoke<void>("trocar_workspace", { indice }),
   focarCard: (indice: number) => invoke<void>("focar_card", { indice }),
   fecharCard: (indice: number) => invoke<void>("fechar_card", { indice }),

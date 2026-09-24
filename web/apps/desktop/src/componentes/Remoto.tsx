@@ -13,6 +13,8 @@ export function Remoto({ aberta, fechar }: { aberta: boolean; fechar: () => void
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState("");
   const [copiado, setCopiado] = useState(false);
+  const [totp, setTotp] = useState<{ otpauth: string; secret: string } | null>(null);
+  const [codigo, setCodigo] = useState("");
 
   const recarregar = () => nucleo.remotoStatus().then(setStatus).catch((e) => setAviso(String(e)));
 
@@ -80,6 +82,45 @@ export function Remoto({ aberta, fechar }: { aberta: boolean; fechar: () => void
     setTimeout(() => setCopiado(false), 1500);
   };
 
+  const acao = async (f: () => Promise<unknown>, msg: string) => {
+    setOcupado(true);
+    setAviso("");
+    try {
+      await f();
+      setAviso(msg);
+      await recarregar();
+    } catch (e) {
+      setAviso(String(e));
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const iniciarTotp = async () => {
+    setAviso("");
+    try {
+      setTotp(await nucleo.remotoTotpIniciar());
+    } catch (e) {
+      setAviso(String(e));
+    }
+  };
+
+  const ativarTotp = async () => {
+    setOcupado(true);
+    setAviso("");
+    try {
+      await nucleo.remotoTotpAtivar(codigo.trim());
+      setTotp(null);
+      setCodigo("");
+      setAviso("2FA ativado.");
+      await recarregar();
+    } catch (e) {
+      setAviso(String(e));
+    } finally {
+      setOcupado(false);
+    }
+  };
+
   return (
     <div className="sobreposicao" onMouseDown={fechar}>
       <div className="manual remoto" role="dialog" aria-label="Acesso remoto" onMouseDown={(e) => e.stopPropagation()}>
@@ -139,6 +180,58 @@ export function Remoto({ aberta, fechar }: { aberta: boolean; fechar: () => void
                 {!status?.senhaDefinida && <p className="dica">defina a senha primeiro.</p>}
               </>
             )}
+          </div>
+
+          <div className="remoto-bloco">
+            <strong>3. Verificação em duas etapas (2FA)</strong>
+            {status?.totpAtivo ? (
+              <>
+                <p className="dica">✓ ativo — o login exige o código do seu autenticador (muda a cada 30s).</p>
+                <button className="botao-leve" disabled={ocupado} onClick={() => void acao(nucleo.remotoTotpDesativar, "2FA desativado.")}>
+                  Desativar 2FA
+                </button>
+              </>
+            ) : totp ? (
+              <>
+                <p className="dica">
+                  No app autenticador (Google Authenticator, Aegis…): escaneie ou digite o segredo abaixo, depois confirme com o
+                  código que aparecer.
+                </p>
+                <div className="remoto-url">
+                  <span className="mono" style={{ wordBreak: "break-all" }}>{totp.secret}</span>
+                  <button className="botao-leve" onClick={() => copiar(totp.secret)}>
+                    {copiado ? "copiado" : "copiar"}
+                  </button>
+                </div>
+                <p className="dica" style={{ wordBreak: "break-all" }}>{totp.otpauth}</p>
+                <div className="remoto-linha">
+                  <input inputMode="numeric" placeholder="código atual (6 dígitos)" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+                  <button className="botao" disabled={ocupado || codigo.trim().length < 6} onClick={() => void ativarTotp()}>
+                    Confirmar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="dica">Mesmo com o link e a senha, sem o código do seu celular ninguém entra.</p>
+                <button className="botao-leve" onClick={() => void iniciarTotp()}>
+                  Ativar 2FA
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="remoto-bloco">
+            <strong>Se o link vazar</strong>
+            <p className="dica">Gera um link novo (o antigo morre na hora) e derruba qualquer sessão aberta.</p>
+            <div className="remoto-linha">
+              <button className="botao-leve" disabled={ocupado} onClick={() => void acao(nucleo.remotoRegenerarToken, "link novo gerado; o antigo foi invalidado.")}>
+                Gerar link novo
+              </button>
+              <button className="botao-leve" disabled={ocupado} onClick={() => void acao(nucleo.remotoRevogarSessoes, "sessões derrubadas.")}>
+                Revogar sessões
+              </button>
+            </div>
           </div>
 
           {status && status.acessos.length > 0 && (

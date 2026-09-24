@@ -856,6 +856,8 @@ fn remoto_definir_senha(nucleo: State<'_, Nucleo>, senha: String) -> Result<(), 
 #[serde(rename_all = "camelCase")]
 struct RemotoStatus {
     senha_definida: bool,
+    /// 2FA (autenticador) ativo?
+    totp_ativo: bool,
     /// URL base do túnel enquanto ligado (`null` desligado).
     url: Option<String>,
     /// Caminho SECRETO da tela de login (`/entrar/<token>`) — junto com a URL
@@ -867,12 +869,63 @@ struct RemotoStatus {
 
 #[tauri::command]
 fn remoto_status(nucleo: State<'_, Nucleo>, remoto: State<'_, remoto::Remoto>) -> Result<RemotoStatus, String> {
-    let (senha_definida, caminho) = {
+    let (senha_definida, totp_ativo, caminho) = {
         let e = travar(&nucleo)?;
-        (remoto::senha_definida(&e.store), format!("/entrar/{}", remoto::gate_token(&e.store)))
+        (
+            remoto::senha_definida(&e.store),
+            remoto::totp_ativo(&e.store),
+            format!("/entrar/{}", remoto::gate_token(&e.store)),
+        )
     };
     let acessos = remoto.protecao().lock().map(|p| p.eventos()).unwrap_or_default();
-    Ok(RemotoStatus { senha_definida, url: remoto.url(), caminho, acessos })
+    Ok(RemotoStatus { senha_definida, totp_ativo, url: remoto.url(), caminho, acessos })
+}
+
+/// Gera um link de acesso novo (invalida o antigo) e derruba as sessões.
+#[tauri::command]
+fn remoto_regenerar_token(nucleo: State<'_, Nucleo>, remoto: State<'_, remoto::Remoto>) -> Result<String, String> {
+    let caminho = {
+        let e = travar(&nucleo)?;
+        format!("/entrar/{}", remoto::regenerar_token(&e.store))
+    };
+    remoto.revogar_sessoes();
+    Ok(caminho)
+}
+
+#[tauri::command]
+fn remoto_revogar_sessoes(remoto: State<'_, remoto::Remoto>) -> Result<(), String> {
+    remoto.revogar_sessoes();
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TotpInicio {
+    otpauth: String,
+    secret: String,
+}
+
+/// Começa a configurar o 2FA: cria o segredo e devolve o `otpauth://` (para
+/// o app autenticador) + o segredo em base32 (para digitar à mão).
+#[tauri::command]
+fn remoto_totp_iniciar(nucleo: State<'_, Nucleo>) -> Result<TotpInicio, String> {
+    let e = travar(&nucleo)?;
+    let (otpauth, secret) = remoto::totp_iniciar(&e.store);
+    Ok(TotpInicio { otpauth, secret })
+}
+
+/// Confirma o autenticador com um código atual e liga o 2FA.
+#[tauri::command]
+fn remoto_totp_ativar(nucleo: State<'_, Nucleo>, codigo: String) -> Result<(), String> {
+    let e = travar(&nucleo)?;
+    remoto::totp_ativar(&e.store, &codigo)
+}
+
+#[tauri::command]
+fn remoto_totp_desativar(nucleo: State<'_, Nucleo>) -> Result<(), String> {
+    let e = travar(&nucleo)?;
+    remoto::totp_desativar(&e.store);
+    Ok(())
 }
 
 /// Liga o túnel Cloudflare (sobe o servidor local se preciso) e devolve a URL.
@@ -991,6 +1044,11 @@ pub fn run() {
             remoto_status,
             remoto_ligar,
             remoto_desligar,
+            remoto_regenerar_token,
+            remoto_revogar_sessoes,
+            remoto_totp_iniciar,
+            remoto_totp_ativar,
+            remoto_totp_desativar,
             trocar_workspace,
             focar_card,
             fechar_card,

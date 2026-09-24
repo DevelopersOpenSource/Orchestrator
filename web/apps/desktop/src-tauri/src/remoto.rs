@@ -138,6 +138,107 @@ pub fn gate_token(store: &MemoryStore) -> String {
     t
 }
 
+/// Gera um token de acesso NOVO (invalida o link anterior). Devolve o novo.
+pub fn regenerar_token(store: &MemoryStore) -> String {
+    let t = hex(&urandom(16));
+    let _ = store.ui_set(GATE_KEY, &t);
+    t
+}
+
+// ---------------------------------------------------------------- 2FA (TOTP)
+
+const TOTP_SECRET: &str = "remoto.totp";
+const TOTP_ON: &str = "remoto.totp.on";
+
+/// Base32 (RFC 4648, sem padding) — o formato que o app autenticador lê.
+fn base32(data: &[u8]) -> String {
+    const A: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut out = String::new();
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for &b in data {
+        buffer = (buffer << 8) | b as u32;
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            out.push(A[((buffer >> bits) & 31) as usize] as char);
+        }
+    }
+    if bits > 0 {
+        out.push(A[((buffer << (5 - bits)) & 31) as usize] as char);
+    }
+    out
+}
+
+fn hotp(secret: &[u8], counter: u64) -> u32 {
+    use hmac::{Hmac, Mac};
+    let mut mac = <Hmac<sha1::Sha1>>::new_from_slice(secret).expect("hmac aceita qualquer chave");
+    mac.update(&counter.to_be_bytes());
+    let r = mac.finalize().into_bytes();
+    let off = (r[19] & 0x0f) as usize;
+    let bin = ((r[off] as u32 & 0x7f) << 24)
+        | ((r[off + 1] as u32) << 16)
+        | ((r[off + 2] as u32) << 8)
+        | (r[off + 3] as u32);
+    bin % 1_000_000
+}
+
+fn secret_bytes(hex_str: &str) -> Vec<u8> {
+    (0..hex_str.len() / 2)
+        .filter_map(|i| u8::from_str_radix(&hex_str[i * 2..i * 2 + 2], 16).ok())
+        .collect()
+}
+
+/// O 2FA está ativo (o dono confirmou o autenticador)?
+pub fn totp_ativo(store: &MemoryStore) -> bool {
+    matches!(store.ui_get(TOTP_ON), Ok(Some(v)) if v == "1")
+        && matches!(store.ui_get(TOTP_SECRET), Ok(Some(s)) if !s.is_empty())
+}
+
+fn totp_confere(store: &MemoryStore, codigo: &str) -> bool {
+    let Ok(Some(hexs)) = store.ui_get(TOTP_SECRET) else {
+        return false;
+    };
+    let Ok(alvo) = codigo.trim().parse::<u32>() else {
+        return false;
+    };
+    let secret = secret_bytes(&hexs);
+    let passo = agora_ms() / 1000 / 30;
+    // ±1 janela tolera o relógio um pouco fora de sincronia.
+    [-1i64, 0, 1].iter().any(|d| hotp(&secret, (passo as i64 + d) as u64) == alvo)
+}
+
+/// Cria (se não houver) o segredo do autenticador e devolve o `otpauth://`
+/// para ler no app + o segredo em base32 para digitar à mão. NÃO ativa ainda:
+/// o dono confirma com um código, para não se trancar do lado de fora.
+pub fn totp_iniciar(store: &MemoryStore) -> (String, String) {
+    let hexs = match store.ui_get(TOTP_SECRET) {
+        Ok(Some(s)) if !s.is_empty() => s,
+        _ => {
+            let s = hex(&urandom(20));
+            let _ = store.ui_set(TOTP_SECRET, &s);
+            s
+        }
+    };
+    let b32 = base32(&secret_bytes(&hexs));
+    let uri = format!(
+        "otpauth://totp/Orchestrator:acesso-remoto?secret={b32}&issuer=Orchestrator&period=30&digits=6&algorithm=SHA1"
+    );
+    (uri, b32)
+}
+
+/// Confirma o autenticador com um código atual e liga o 2FA.
+pub fn totp_ativar(store: &MemoryStore, codigo: &str) -> Result<(), String> {
+    if !totp_confere(store, codigo) {
+        return Err("código incorreto — confira o relógio do celular e tente o código atual".into());
+    }
+    store.ui_set(TOTP_ON, "1").map_err(|e| e.to_string())
+}
+
+pub fn totp_desativar(store: &MemoryStore) {
+    let _ = store.ui_delete(TOTP_ON);
+    let _ = store.ui_delete(TOTP_SECRET);
+}
+
 // ---------------------------------------------------------------- proteção / registro
 
 /// Um acesso registrado (para o dono ver quem tentou entrar).
@@ -276,12 +377,18 @@ async fn entrar_pagina(State(e): State<Estado>, Path(token): Path<String>) -> Re
     if !igual_ct(&token, &gate_do_motor(&e.motor)) {
         return nada();
     }
-    Html(PAGINA_LOGIN.replace("__GATE__", &token)).into_response()
+    let totp = e.motor.lock().map(|eng| totp_ativo(&eng.store)).unwrap_or(false);
+    let pagina = PAGINA_LOGIN
+        .replace("__GATE__", &token)
+        .replace("__TOTP__", if totp { "1" } else { "" });
+    Html(pagina).into_response()
 }
 
 #[derive(Deserialize)]
 struct Login {
     senha: String,
+    #[serde(default)]
+    codigo: String,
 }
 
 /// Tentativa de login (mesmo caminho secreto). Confere token → trava de força
@@ -295,7 +402,11 @@ async fn entrar_login(State(e): State<Estado>, Path(token): Path<String>, header
         return (StatusCode::TOO_MANY_REQUESTS, format!("muitas tentativas — espere {seg}s")).into_response();
     }
     let ok = match e.motor.lock() {
-        Ok(eng) => senha_confere(&eng.store, &corpo.senha),
+        Ok(eng) => {
+            // Senha E, quando o 2FA está ativo, o código do autenticador.
+            senha_confere(&eng.store, &corpo.senha)
+                && (!totp_ativo(&eng.store) || totp_confere(&eng.store, &corpo.codigo))
+        }
         Err(_) => false,
     };
     if !ok {
@@ -391,6 +502,41 @@ async fn acao(State(e): State<Estado>, Path(cmd): Path<String>, headers: HeaderM
     Json(json!({ "ok": true })).into_response()
 }
 
+/// (Do acesso remoto) Gera um link novo e derruba TODAS as outras sessões —
+/// se você acha que o link vazou, um clique aqui mata o antigo e expulsa quem
+/// estava dentro (menos você). Devolve o caminho novo.
+async fn admin_regenerar(State(e): State<Estado>, headers: HeaderMap) -> Response {
+    if !autenticado(&e, &headers) {
+        return negar();
+    }
+    let novo = match e.motor.lock() {
+        Ok(eng) => regenerar_token(&eng.store),
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "núcleo travado").into_response(),
+    };
+    revogar_menos(&e.sessoes, token_do_cookie(&headers).as_deref());
+    Json(json!({ "caminho": format!("/entrar/{novo}") })).into_response()
+}
+
+/// (Do acesso remoto) Derruba as OUTRAS sessões, mantendo a sua.
+async fn admin_revogar(State(e): State<Estado>, headers: HeaderMap) -> Response {
+    if !autenticado(&e, &headers) {
+        return negar();
+    }
+    revogar_menos(&e.sessoes, token_do_cookie(&headers).as_deref());
+    Json(json!({ "ok": true })).into_response()
+}
+
+/// Esvazia as sessões, preservando `manter` (a de quem pediu).
+fn revogar_menos(sessoes: &Sessoes, manter: Option<&str>) {
+    if let Ok(mut s) = sessoes.lock() {
+        let guardar = manter.and_then(|t| s.take(t));
+        s.clear();
+        if let Some(t) = guardar {
+            s.insert(t);
+        }
+    }
+}
+
 /// Cabeçalhos de segurança em toda resposta (defesa em profundidade).
 async fn cabecalhos(req: Request, next: Next) -> Response {
     let mut r = next.run(req).await;
@@ -410,6 +556,8 @@ fn rotas(estado: Estado) -> Router {
         .route("/estado", get(estado_sse))
         .route("/enviar", post(enviar))
         .route("/acao/{cmd}", post(acao))
+        .route("/admin/regenerar", post(admin_regenerar))
+        .route("/admin/revogar", post(admin_revogar))
         .layer(middleware::from_fn(cabecalhos))
         .with_state(estado)
 }
@@ -524,6 +672,14 @@ impl Remoto {
         }
     }
 
+    /// (Do painel do desktop) Derruba TODAS as sessões abertas — força quem
+    /// estiver dentro a logar de novo.
+    pub fn revogar_sessoes(&self) {
+        if let Ok(mut s) = self.sessoes().lock() {
+            s.clear();
+        }
+    }
+
     pub fn desligar(&self) -> Result<(), String> {
         if let Some(mut t) = self.tunel.lock().map_err(|_| "estado travado".to_string())?.take() {
             let _ = t.filho.kill();
@@ -545,6 +701,33 @@ mod tests {
         let store = MemoryStore::open_in_memory().unwrap();
         let eng = Engine::new(store, &cfg, std::path::PathBuf::from("mem.db"));
         Arc::new(Mutex::new(eng))
+    }
+
+    #[test]
+    fn hotp_bate_com_os_vetores_do_rfc4226() {
+        // Se estes baterem, o código casa com Google Authenticator/Aegis.
+        let secret = b"12345678901234567890";
+        let esperado = [755224, 287082, 359152, 969429, 338314, 254676, 287922, 162583, 399871, 520489];
+        for (c, &e) in esperado.iter().enumerate() {
+            assert_eq!(hotp(secret, c as u64), e, "contador {c}");
+        }
+    }
+
+    #[test]
+    fn totp_aceita_o_codigo_do_momento_e_recusa_o_resto() {
+        let store = MemoryStore::open_in_memory().unwrap();
+        let (_uri, _b32) = totp_iniciar(&store);
+        let hexs = store.ui_get(TOTP_SECRET).unwrap().unwrap();
+        let secret = secret_bytes(&hexs);
+        let passo = agora_ms() / 1000 / 30;
+        let codigo = format!("{:06}", hotp(&secret, passo));
+        assert!(totp_confere(&store, &codigo));
+        assert!(!totp_confere(&store, "000000"));
+        // Só liga depois de confirmar com um código válido.
+        assert!(!totp_ativo(&store));
+        totp_ativar(&store, &codigo).unwrap();
+        assert!(totp_ativo(&store));
+        assert!(totp_ativar(&store, "111111").is_err());
     }
 
     #[test]
@@ -672,11 +855,13 @@ input:focus{border-color:#4f8cff}button{margin-top:12px;width:100%;height:42px;b
 <h1>Orchestrator</h1><p>Acesso remoto protegido. Digite a senha.</p>
 <input id="s" type="password" placeholder="senha" autocomplete="current-password" autofocus>
 <button>Entrar</button><div class="erro" id="e"></div>
+<input id="c" inputmode="numeric" autocomplete="one-time-code" placeholder="código do autenticador" style="margin-top:10px;display:none">
 </form><script>
-const f=document.getElementById('f'),s=document.getElementById('s'),e=document.getElementById('e');
+const f=document.getElementById('f'),s=document.getElementById('s'),c=document.getElementById('c'),e=document.getElementById('e');
+if('__TOTP__'){c.style.display='block'}
 f.onsubmit=async ev=>{ev.preventDefault();e.textContent='';
- const r=await fetch('/entrar/__GATE__',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({senha:s.value})});
- if(r.ok){location.href='/'}else if(r.status===429){e.textContent=await r.text()}else{e.textContent='Senha incorreta.';s.value='';s.focus()}};
+ const r=await fetch('/entrar/__GATE__',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({senha:s.value,codigo:c.value})});
+ if(r.ok){location.href='/'}else if(r.status===429){e.textContent=await r.text()}else{e.textContent='Senha ou código incorreto.';s.value='';c.value='';s.focus()}};
 </script></body></html>"#;
 
 const PAGINA_APP: &str = r#"<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
@@ -702,8 +887,15 @@ footer button{height:40px;padding:0 16px;border:0;border-radius:9px;background:#
 .ws{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}.ws button{font-size:12px;padding:4px 10px;border:1px solid #2a3342;border-radius:20px;background:#0d1017;color:#8b95a5;cursor:pointer}
 .ws button.on{border-color:#4f8cff;color:#e6e6e6}
 .aviso{padding:20px;text-align:center;color:#8b95a5}
+.mini{font-size:12px;margin-right:8px;padding:5px 10px;border:1px solid #2a3342;border-radius:8px;background:#0d1017;color:#e6e6e6;cursor:pointer}
 </style></head><body>
-<header><b>Orchestrator</b><span class="chip" id="proj">—</span><span class="chip" id="prov">—</span><span class="chip" id="post">—</span><button class="sair" onclick="sair()">sair</button></header>
+<header><b>Orchestrator</b><span class="chip" id="proj">—</span><span class="chip" id="prov">—</span><span class="chip" id="post">—</span>
+<button class="sair" id="mais">segurança ▾</button><button class="sair" onclick="sair()">sair</button></header>
+<div id="painel" style="display:none;padding:8px 14px;border-bottom:1px solid #232a36;background:#151a23;font-size:13px">
+ <button class="mini" onclick="novolink()">Gerar link novo (derruba o antigo)</button>
+ <button class="mini" onclick="revogar()">Revogar outras sessões</button>
+ <div id="banner" style="margin-top:8px;color:#8b95a5;word-break:break-all"></div>
+</div>
 <main id="main"></main>
 <footer><input id="in" placeholder="mensagem ou /comando" autocomplete="off"><button onclick="enviar()">Enviar</button></footer>
 <script>
@@ -713,6 +905,9 @@ async function post(u,b){return fetch(u,{method:'POST',headers:{'content-type':'
 function enviar(){const i=el('in');const t=i.value.trim();if(!t)return;i.value='';post('/enviar',{texto:t})}
 el('in').addEventListener('keydown',e=>{if(e.key==='Enter')enviar()});
 function sair(){post('/logout').then(()=>{document.body.innerHTML='<p class="aviso">Você saiu. Reabra o link de acesso para entrar.</p>'})}
+el('mais').onclick=()=>{const p=el('painel');p.style.display=p.style.display==='none'?'block':'none'};
+async function novolink(){const r=await post('/admin/regenerar');if(r.ok){const d=await r.json();const link=location.origin+d.caminho;el('banner').innerHTML='Link novo (guarde; o antigo morreu): <b>'+esc(link)+'</b>';try{await navigator.clipboard.writeText(link);el('banner').innerHTML+=' (copiado)'}catch(_){}}}
+async function revogar(){const r=await post('/admin/revogar');el('banner').textContent=r.ok?'Outras sessões derrubadas.':'falhou'}
 function acao(c,a){post('/acao/'+c,a)}
 function render(f){
  el('proj').textContent=f.projeto||'—';el('prov').textContent=(f.provedor||'')+(f.modelo?(' · '+f.modelo):'');el('post').textContent=f.postura||'';
