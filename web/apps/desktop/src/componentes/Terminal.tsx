@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { nucleo } from "../nucleo";
 
 function cor(nome: string, reserva: string): string {
@@ -35,27 +34,9 @@ export function Terminal({ indice, focado, aoFocar }: { indice: number; focado: 
     const ajuste = new FitAddon();
     term.loadAddon(ajuste);
     term.open(el);
-
-    // O WebGL acelera, MAS o canvas fica em branco/cinza quando o elemento é
-    // escondido e reexibido (trocar de aba) ou o contexto se perde. Recarregar
-    // o addon na perda de contexto conserta sem tirar a aceleração.
-    let webgl: WebglAddon | null = null;
-    const carregarWebgl = () => {
-      try {
-        const w = new WebglAddon();
-        w.onContextLoss(() => {
-          w.dispose();
-          webgl = null;
-          // tenta de novo no próximo repaint
-          requestAnimationFrame(carregarWebgl);
-        });
-        term.loadAddon(w);
-        webgl = w;
-      } catch {
-        // Sem WebGL o xterm desenha no canvas 2D — mais lento, mas funciona.
-      }
-    };
-    carregarWebgl();
+    // Sem WebGL de propósito: o renderizador acelerado apagava o terminal
+    // sozinho (perda de contexto do canvas, tela cinza ao trocar de aba). O
+    // renderizador padrão (DOM) é um pouco mais lento mas NUNCA some.
     termo.current = term;
 
     const redimensionar = () => {
@@ -97,7 +78,6 @@ export function Terminal({ indice, focado, aoFocar }: { indice: number; focado: 
       observador.disconnect();
       visivel.disconnect();
       digitado.dispose();
-      webgl?.dispose();
       term.dispose();
       termo.current = null;
     };
