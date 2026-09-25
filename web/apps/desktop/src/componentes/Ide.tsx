@@ -104,7 +104,11 @@ export function Ide({ projeto, voltar }: { projeto: string; voltar: () => void }
           setSujo(true);
         }
       }),
-      EditorView.theme({ "&": { height: "100%", fontSize: "13px" }, ".cm-scroller": { fontFamily: "var(--fonte-mono, monospace)" } }),
+      EditorView.theme({
+        "&": { height: "100%", fontSize: "13px" },
+        // Rola na horizontal (código largo) em vez de cortar/quebrar.
+        ".cm-scroller": { fontFamily: "var(--fonte-mono, monospace)", overflowX: "auto" },
+      }),
     ];
     return linguagem ? [...base, linguagem] : base;
   }, [ativo]);
@@ -125,11 +129,20 @@ export function Ide({ projeto, voltar }: { projeto: string; voltar: () => void }
   useEffect(() => {
     if (!editorRef.current) return;
     viewRef.current?.destroy();
-    viewRef.current = new EditorView({
+    const view = new EditorView({
       state: EditorState.create({ doc: conteudo, extensions: extensoes }),
       parent: editorRef.current,
     });
+    viewRef.current = view;
+    // O CodeMirror fica CINZA/vazio quando é criado com o painel ainda sem
+    // tamanho (montado escondido, ou no acesso remoto): ele mede 0 e não
+    // pinta. Forçar uma nova medição quando o layout assenta resolve.
+    requestAnimationFrame(() => view.requestMeasure());
+    const obs = new ResizeObserver(() => view.requestMeasure());
+    obs.observe(editorRef.current);
+    const parar = () => obs.disconnect();
     return () => {
+      parar();
       viewRef.current?.destroy();
       viewRef.current = null;
     };
