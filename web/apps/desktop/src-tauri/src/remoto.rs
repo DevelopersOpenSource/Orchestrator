@@ -437,6 +437,45 @@ async fn rpc(State(e): State<Estado>, Path(cmd): Path<String>, headers: HeaderMa
     }
 }
 
+/// `GET /memoria/{*caminho}` — proxy de LEITURA para a API da memória (o
+/// memoryd só escuta no loopback; o navegador remoto não o alcança). Só GET:
+/// escrita na memória continua exigindo o token do memoryd, que não sai daqui.
+async fn memoria_proxy(
+    State(e): State<Estado>,
+    headers: HeaderMap,
+    Path(caminho): Path<String>,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    if !autenticado(&e, &headers) {
+        return negar();
+    }
+    let base = crate::memoria_api();
+    let url = match query {
+        Some(q) => format!("{base}/{caminho}?{q}"),
+        None => format!("{base}/{caminho}"),
+    };
+    let resposta = match reqwest::Client::new()
+        .get(&url)
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(err) => return (StatusCode::BAD_GATEWAY, format!("memória fora do ar: {err}")).into_response(),
+    };
+    let status = StatusCode::from_u16(resposta.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let tipo = resposta
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    match resposta.bytes().await {
+        Ok(corpo) => (status, [(header::CONTENT_TYPE, tipo)], corpo.to_vec()).into_response(),
+        Err(err) => (StatusCode::BAD_GATEWAY, format!("memória: {err}")).into_response(),
+    }
+}
+
 /// SSE do estado — o `listen("estado")` do navegador vira isto.
 async fn eventos_sse(State(e): State<Estado>, headers: HeaderMap) -> Response {
     if !autenticado(&e, &headers) {
@@ -680,6 +719,7 @@ fn rotas(estado: Estado) -> Router {
         .route("/eventos", get(eventos_sse))
         .route("/terminal/{indice}", get(terminal_sse))
         .route("/assets/{*caminho}", get(asset))
+        .route("/memoria/{*caminho}", get(memoria_proxy))
         .layer(middleware::from_fn(cabecalhos))
         .with_state(estado)
 }

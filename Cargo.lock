@@ -3916,6 +3916,7 @@ dependencies = [
  "orchestrator-engine",
  "orchestrator-memory",
  "orchestrator-notify",
+ "reqwest 0.12.28",
  "rust-embed",
  "serde",
  "serde_json",

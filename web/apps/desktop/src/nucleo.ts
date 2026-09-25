@@ -225,7 +225,9 @@ export const nucleo = {
   redimensionarTerminal: (indice: number, linhas: number, colunas: number) =>
     invoke<void>("redimensionar_terminal", { indice, linhas, colunas }),
   iterarAgente: (indice: number, texto: string) => invoke<void>("iterar_agente", { indice, texto }),
-  memoriaApi: () => invoke<string>("memoria_api"),
+  /** Base da API da memória. No app é o loopback direto; no navegador (acesso
+   * remoto) é `/memoria` na mesma origem — o servidor repassa as leituras. */
+  memoriaApi: () => (emTauri ? invoke<string>("memoria_api") : Promise.resolve(`${location.origin}/memoria`)),
 
   /** Liga um terminal: `aoReceber` ganha a tela atual e depois cada pedaço. */
   assinarTerminal(indice: number, aoReceber: (bytes: Uint8Array) => void): Promise<void> {
