@@ -12,6 +12,7 @@ function cor(nome: string, reserva: string): string {
 export function Terminal({ indice, focado, aoFocar }: { indice: number; focado: boolean; aoFocar: () => void }) {
   const caixa = useRef<HTMLDivElement>(null);
   const termo = useRef<XTerm | null>(null);
+  const repintar = useRef<() => void>(() => {});
 
   useEffect(() => {
     const el = caixa.current;
@@ -34,11 +35,27 @@ export function Terminal({ indice, focado, aoFocar }: { indice: number; focado: 
     const ajuste = new FitAddon();
     term.loadAddon(ajuste);
     term.open(el);
-    try {
-      term.loadAddon(new WebglAddon());
-    } catch {
-      // Sem WebGL o xterm desenha no canvas 2D — mais lento, mas funciona.
-    }
+
+    // O WebGL acelera, MAS o canvas fica em branco/cinza quando o elemento é
+    // escondido e reexibido (trocar de aba) ou o contexto se perde. Recarregar
+    // o addon na perda de contexto conserta sem tirar a aceleração.
+    let webgl: WebglAddon | null = null;
+    const carregarWebgl = () => {
+      try {
+        const w = new WebglAddon();
+        w.onContextLoss(() => {
+          w.dispose();
+          webgl = null;
+          // tenta de novo no próximo repaint
+          requestAnimationFrame(carregarWebgl);
+        });
+        term.loadAddon(w);
+        webgl = w;
+      } catch {
+        // Sem WebGL o xterm desenha no canvas 2D — mais lento, mas funciona.
+      }
+    };
+    carregarWebgl();
     termo.current = term;
 
     const redimensionar = () => {
@@ -46,8 +63,26 @@ export function Terminal({ indice, focado, aoFocar }: { indice: number; focado: 
       ajuste.fit();
       void nucleo.redimensionarTerminal(indice, term.rows, term.cols);
     };
+    // Refit + REPAINT forçado — o que estava cinza volta a aparecer sem esperar
+    // uma tecla. `refresh` redesenha todas as linhas visíveis.
+    const forcarRepintura = () => {
+      if (!ativo || el.clientWidth === 0 || el.clientHeight === 0) return;
+      ajuste.fit();
+      void nucleo.redimensionarTerminal(indice, term.rows, term.cols);
+      term.refresh(0, Math.max(0, term.rows - 1));
+    };
+    repintar.current = () => requestAnimationFrame(forcarRepintura);
+
     const observador = new ResizeObserver(redimensionar);
     observador.observe(el);
+    // Quando o terminal volta a ficar VISÍVEL (troca de aba), repinta.
+    const visivel = new IntersectionObserver(
+      (entradas) => {
+        if (entradas.some((e) => e.isIntersecting)) repintar.current();
+      },
+      { threshold: 0.01 },
+    );
+    visivel.observe(el);
     redimensionar();
 
     const digitado = term.onData((dados) => void nucleo.escreverTerminal(indice, dados));
@@ -60,14 +95,20 @@ export function Terminal({ indice, focado, aoFocar }: { indice: number; focado: 
     return () => {
       ativo = false;
       observador.disconnect();
+      visivel.disconnect();
       digitado.dispose();
+      webgl?.dispose();
       term.dispose();
       termo.current = null;
     };
   }, [indice]);
 
   useEffect(() => {
-    if (focado) termo.current?.focus();
+    if (focado) {
+      termo.current?.focus();
+      // Ao focar (inclui voltar pra aba), garante que a tela apareça.
+      repintar.current();
+    }
   }, [focado]);
 
   return <div className="xterm-caixa" ref={caixa} onMouseDown={aoFocar} />;
