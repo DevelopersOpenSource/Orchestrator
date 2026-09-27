@@ -350,6 +350,8 @@ impl Engine {
         // Põe o nível de permissão do dono no ambiente já no começo, para o
         // chat e as CLIs herdarem sem depender de o dono reabrir a aba.
         unsafe { std::env::set_var("ORCHESTRATOR_PERM_MODE", app.perm_mode()) };
+        // Chaves de provedor salvas pelo dono viram env já no começo.
+        app.aplicar_chaves_provedor();
         app.reload();
         app
     }
@@ -1828,6 +1830,82 @@ impl Engine {
     }
 
     /// Os provedores e o estado de cada um agora (a lista do `/provedor`).
+    /// Aplica no ambiente do processo as chaves de provedor que o dono salvou
+    /// pelo app (guardadas em `ui_state provider.key.<VAR>`, NUNCA no
+    /// config.json). Assim a resolução por env já as encontra, sem chave em
+    /// texto no arquivo.
+    pub fn aplicar_chaves_provedor(&self) {
+        for p in &self.providers {
+            if p.api_key_env.is_empty() {
+                continue;
+            }
+            if let Ok(Some(v)) = self.store.ui_get(&format!("provider.key.{}", p.api_key_env)) {
+                if !v.is_empty() {
+                    unsafe { std::env::set_var(&p.api_key_env, v) };
+                }
+            }
+        }
+    }
+
+    /// Reconstrói a lista de provedores a partir do config (após editar) e
+    /// mantém o provedor ATIVO em sincronia com a versão editada — ao vivo.
+    fn reconstruir_provedores(&mut self) {
+        self.providers = if self.config.llm_providers.is_empty() {
+            Config::default().llm_providers
+        } else {
+            self.config.llm_providers.clone()
+        };
+        if let Some(p) = self.providers.iter().find(|p| p.name == self.chat.provider.name).cloned() {
+            self.chat.provider = p;
+        }
+        self.aplicar_chaves_provedor();
+    }
+
+    /// Guarda a chave de um provedor (valor no `ui_state`, fora do config.json
+    /// e do git) e aplica no ambiente já. Só o dono, pelo app.
+    pub fn definir_chave_provedor(&mut self, env_name: &str, valor: &str) {
+        let env_name = env_name.trim();
+        if env_name.is_empty() {
+            return;
+        }
+        let _ = self.store.ui_set(&format!("provider.key.{env_name}"), valor);
+        unsafe { std::env::set_var(env_name, valor) };
+    }
+
+    /// Se há uma chave salva para aquela variável.
+    pub fn tem_chave(&self, env_name: &str) -> bool {
+        !env_name.trim().is_empty()
+            && matches!(self.store.ui_get(&format!("provider.key.{}", env_name.trim())), Ok(Some(v)) if !v.is_empty())
+    }
+
+    /// Adiciona ou atualiza um provedor (aba Config) e recarrega ao vivo. A
+    /// chave, se dada, vai para o `ui_state` (não para o config.json).
+    pub fn salvar_provedor(&mut self, p: LlmProvider, chave: Option<String>) {
+        match self.config.llm_providers.iter_mut().find(|x| x.name == p.name) {
+            Some(x) => *x = p.clone(),
+            None => self.config.llm_providers.push(p.clone()),
+        }
+        if let Some(k) = chave.filter(|k| !k.is_empty()) {
+            if !p.api_key_env.is_empty() {
+                self.definir_chave_provedor(&p.api_key_env, &k);
+            }
+        }
+        if let Some(cp) = &self.config_path {
+            let _ = self.config.save(cp);
+        }
+        self.reconstruir_provedores();
+        self.status = format!("provedor \"{}\" salvo", p.name);
+    }
+
+    pub fn remover_provedor(&mut self, nome: &str) {
+        self.config.llm_providers.retain(|p| p.name != nome);
+        if let Some(cp) = &self.config_path {
+            let _ = self.config.save(cp);
+        }
+        self.reconstruir_provedores();
+        self.status = format!("provedor \"{nome}\" removido");
+    }
+
     pub fn provider_list(&self) -> Vec<(LlmProvider, Availability)> {
         let probe = Probe::current();
         self.providers

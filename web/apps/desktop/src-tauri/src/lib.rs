@@ -858,6 +858,60 @@ fn definir_perm_modo(nucleo: State<'_, Nucleo>, modo: String) -> Result<String, 
     Ok(e.status.clone())
 }
 
+/// Lista os provedores para editar na aba Config (com se tem chave salva).
+#[tauri::command]
+fn config_provedores(nucleo: State<'_, Nucleo>) -> Result<Vec<serde_json::Value>, String> {
+    let e = travar(&nucleo)?;
+    Ok(e.providers
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "nome": p.name,
+                "kind": serde_json::to_value(p.kind).unwrap_or(serde_json::Value::Null),
+                "baseUrl": p.base_url,
+                "model": p.model,
+                "apiKeyEnv": p.api_key_env,
+                "tools": p.tools,
+                "temChave": e.tem_chave(&p.api_key_env),
+            })
+        })
+        .collect())
+}
+
+/// Salva (adiciona/edita) um provedor e recarrega ao vivo. A chave, se dada,
+/// vai para o ui_state (fora do config.json/git).
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+fn config_provedor_salvar(
+    nucleo: State<'_, Nucleo>,
+    nome: String,
+    kind: String,
+    base_url: String,
+    model: String,
+    api_key_env: String,
+    tools: Option<bool>,
+    chave: Option<String>,
+) -> Result<String, String> {
+    use orchestrator_core::config::{LlmProvider, ProviderKind};
+    let mut e = travar(&nucleo)?;
+    if nome.trim().is_empty() {
+        return Err("o provedor precisa de um nome".into());
+    }
+    let kind: ProviderKind = serde_json::from_value(serde_json::Value::String(kind)).map_err(|_| "tipo de provedor inválido".to_string())?;
+    // Preserva o mapa `env` do provedor existente (Claude-based usa isso).
+    let env = e.providers.iter().find(|p| p.name == nome).map(|p| p.env.clone()).unwrap_or_default();
+    let p = LlmProvider { name: nome, kind, base_url, model, api_key_env, env, tools };
+    e.salvar_provedor(p, chave);
+    Ok(e.status.clone())
+}
+
+#[tauri::command]
+fn config_provedor_remover(nucleo: State<'_, Nucleo>, nome: String) -> Result<String, String> {
+    let mut e = travar(&nucleo)?;
+    e.remover_provedor(&nome);
+    Ok(e.status.clone())
+}
+
 #[tauri::command]
 fn remoto_definir_senha(nucleo: State<'_, Nucleo>, senha: String) -> Result<(), String> {
     let e = travar(&nucleo)?;
@@ -993,6 +1047,13 @@ pub(crate) fn despachar(app: &AppHandle, cmd: &str, args: &serde_json::Value) ->
             val(ssh_salvar(st(), hosts))
         }
         "definir_perm_modo" => val(definir_perm_modo(st(), s("modo"))),
+        "config_provedores" => val(config_provedores(st())),
+        "config_provedor_remover" => val(config_provedor_remover(st(), s("nome"))),
+        "config_provedor_salvar" => val(config_provedor_salvar(
+            st(), s("nome"), s("kind"), s("baseUrl"), s("model"), s("apiKeyEnv"),
+            args.get("tools").and_then(serde_json::Value::as_bool),
+            args.get("chave").and_then(serde_json::Value::as_str).map(str::to_string),
+        )),
         "trocar_workspace" => val(trocar_workspace(st(), u("indice"))),
         "focar_card" => val(focar_card(st(), u("indice"))),
         "fechar_card" => val(fechar_card(app.clone(), st(), u("indice"))),
@@ -1125,6 +1186,9 @@ pub fn run() {
             iniciar_sandbox,
             parar_sandbox,
             definir_perm_modo,
+            config_provedores,
+            config_provedor_salvar,
+            config_provedor_remover,
             remoto_definir_senha,
             remoto_status,
             remoto_ligar,

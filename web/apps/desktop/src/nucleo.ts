@@ -148,6 +148,18 @@ export interface RemotoStatus {
   acessos: AcessoRemoto[];
 }
 
+export interface ProvedorEdit {
+  nome: string;
+  /** ex.: "open_ai_compat", "claude_cli", "codex_cli"... */
+  kind: string;
+  baseUrl: string;
+  model: string;
+  /** Nome da variável de ambiente da chave (o valor fica no ui_state, não aqui). */
+  apiKeyEnv: string;
+  tools: boolean | null;
+  temChave: boolean;
+}
+
 export interface EntradaArquivo {
   nome: string;
   /** Relativo à raiz do projeto — é o que volta para `ideLer`/`ideSalvar`. */
@@ -204,6 +216,13 @@ export const nucleo = {
   pararSandbox: (nome: string) => invoke<string>("parar_sandbox", { nome }),
   /** Troca o nível de permissão do orquestrador (bypass/padrao/autonomo). */
   definirPermModo: (modo: string) => invoke<string>("definir_perm_modo", { modo }),
+  configProvedores: () => invoke<ProvedorEdit[]>("config_provedores"),
+  /** Salva/edita um provedor e recarrega ao vivo. `chave` opcional vai pro ui_state. */
+  configProvedorSalvar: (p: ProvedorEdit & { chave?: string }) =>
+    invoke<string>("config_provedor_salvar", {
+      nome: p.nome, kind: p.kind, baseUrl: p.baseUrl, model: p.model, apiKeyEnv: p.apiKeyEnv, tools: p.tools, chave: p.chave,
+    }),
+  configProvedorRemover: (nome: string) => invoke<string>("config_provedor_remover", { nome }),
   remotoDefinirSenha: (senha: string) => invoke<void>("remoto_definir_senha", { senha }),
   remotoStatus: () => invoke<RemotoStatus>("remoto_status"),
   /** Sobe o servidor local (loopback) se preciso e abre o túnel; devolve a URL. */
