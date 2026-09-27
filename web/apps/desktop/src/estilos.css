@@ -221,8 +221,10 @@ button.chip:hover { color: var(--tx); border-color: var(--tx3); }
 .ide-item-ativo { background: var(--s2); color: var(--tx); font-weight: 600; }
 .ide-editor { flex: 1; min-width: 0; border: 1px solid var(--bd2); border-radius: 10px; overflow: hidden; background: var(--s1); display: flex; }
 .ide-editor .vazio { margin: auto; }
-.ide-cm { flex: 1; min-width: 0; overflow: auto; }
-.ide-cm .cm-editor { height: 100%; }
+.ide-cm { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.ide-cm .cm-editor { height: 100%; max-width: 100%; }
+/* O CodeMirror rola sozinho na horizontal (linha longa) sem empurrar a janela. */
+.ide-cm .cm-scroller { overflow-x: auto; overflow-y: auto; }
 
 @media (max-width: 1200px) {
   .chat { width: 320px; }

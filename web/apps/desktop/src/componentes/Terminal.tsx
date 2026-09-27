@@ -52,7 +52,9 @@ export function Terminal({ indice, focado, aoFocar }: { indice: number; focado: 
       void nucleo.redimensionarTerminal(indice, term.rows, term.cols);
       term.refresh(0, Math.max(0, term.rows - 1));
     };
-    repintar.current = () => requestAnimationFrame(forcarRepintura);
+    // Repinta JÁ e de novo no próximo frame (o layout pode ainda estar
+    // assentando ao trocar de aba) — corta o delay de renderização.
+    repintar.current = () => { forcarRepintura(); requestAnimationFrame(forcarRepintura); };
 
     const observador = new ResizeObserver(redimensionar);
     observador.observe(el);
